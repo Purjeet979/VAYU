@@ -6,8 +6,8 @@
 
 -   [x] Create `vayu-sangam/`
 -   [x] Initialize Git
--   [ ] Add `.gitignore`
--   [ ] Add Python virtual environment instructions
+-   [x] Add `.gitignore`
+-   [x] Add Python virtual environment instructions
 -   [x] Add Node/Next.js setup
 
 ### T0.2 Clone scientific dependencies
@@ -120,11 +120,11 @@ Implement configurable score from `configs/demo.yaml`.
 
 # Phase 3 --- Inversion intelligence
 
--   [ ] Implement PBLH normalization
--   [ ] Implement wind-speed normalization
--   [ ] Implement stability proxy
--   [ ] Create inversion index
--   [ ] Map to four categories
+-   [x] Implement PBLH normalization
+-   [x] Implement wind-speed normalization
+-   [x] Implement stability proxy
+-   [x] Create inversion index
+-   [x] Map to four categories
 -   [ ] Unit-test thresholds
 
 ------------------------------------------------------------------------
@@ -153,14 +153,14 @@ class ForecastModel:
 
 -   [x] Build training dataset interface
 -   [x] Implement PyTorch temporal model
--   [x] Save model checkpoint
+-   [x] Save model checkpoint (CODE EXISTS, NEVER TRAINED)
 -   [x] Implement inference
 -   [x] Add CPU fallback
 
 ## T4.4 XGBoost correction
 
 -   [x] Build feature matrix
--   [x] Train baseline XGBoost
+-   [ ] Train baseline XGBoost (CODE EXISTS, NEVER TRAINED)
 -   [x] Save model
 -   [x] Implement prediction
 -   [x] Add feature importance
@@ -180,12 +180,12 @@ moderate = 0.70
 aggressive = 0.40
 ```
 
--   [ ] Modify emission features
--   [ ] Run surrogate
--   [ ] Apply XGBoost correction
--   [ ] Recalculate AQI
--   [ ] Return delta
--   [ ] Cache repeated scenarios
+-   [x] Modify emission features
+-   [ ] Run surrogate (MISSING MODEL CHECKPOINT)
+-   [ ] Apply XGBoost correction (MISSING MODEL CHECKPOINT)
+-   [x] Recalculate AQI
+-   [x] Return delta
+-   [x] Cache repeated scenarios
 
 ------------------------------------------------------------------------
 
@@ -258,21 +258,24 @@ aggressive = 0.40
 
 # Phase 8 --- Demo polish
 
--   [ ] Add Demo/Live badge
--   [ ] Add data provenance
--   [ ] Add model version
--   [ ] Add loading states
--   [ ] Add error states
--   [ ] Add empty states
--   [ ] Add "last updated"
--   [ ] Add unit labels
--   [ ] Remove scientific claims that are not validated
+-   [x] Add Demo/Live badge
+-   [x] Add data provenance
+-   [x] Add model version
+-   [x] Add loading states
+-   [x] Add error states
+-   [x] Add empty states
+-   [x] Add "last updated"
+-   [x] Add unit labels
+-   [x] Remove scientific claims that are not validated
 
 ------------------------------------------------------------------------
 
 # Phase 9 --- Judge flow
 
 Prepare a 3-minute deterministic demo:
+
+> [!WARNING]
+> The current codebase does NOT implement WRF-Chem or trained XGBoost models. You MUST adjust this script for the actual demo, otherwise you will be claiming features that do not exist in the codebase.
 
 ### 0:00--0:30
 
@@ -317,25 +320,26 @@ Show PM2.5/AQI reduction.
 
 Open explanation.
 
-Show top drivers and SHAP/feature importance.
+Show top drivers and SHAP/feature importance. (NOTE: SHAP is not implemented, rule-based drivers are).
 
 ### 2:45--3:00
 
 Show architecture/data provenance and explain:
 
-**WRF-Chem = physics/ground truth** **Surrogate = fast inference**
-**XGBoost = local correction**
+**WRF-Chem = physics/ground truth** (NOTE: Missing from codebase)
+**Surrogate = fast inference** (NOTE: Untrained skeleton only)
+**XGBoost = local correction** (NOTE: Untrained skeleton only)
 
 ------------------------------------------------------------------------
 
 # Phase 10 --- Final verification
 
 -   [ ] `docker compose up` works if Docker is provided
--   [ ] `npm run build` passes
+-   [x] `npm run build` passes
 -   [ ] backend tests pass
--   [ ] frontend loads with backend unavailable
--   [ ] demo mode works offline
--   [ ] no secret committed
--   [ ] no overlapping dashboard elements
--   [ ] no fake "real-time" claims
--   [ ] all API endpoints documented
+-   [x] frontend loads with backend unavailable
+-   [x] demo mode works offline
+-   [x] no secret committed
+-   [x] no overlapping dashboard elements
+-   [x] no fake "real-time" claims
+-   [x] all API endpoints documented
