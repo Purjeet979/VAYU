@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import threading
 from typing import Any
 
 import numpy as np
@@ -29,10 +30,16 @@ def _aqi(pm25: float, pm10: float, o3: float) -> int:
     return int(np.ceil(max(subindices.pm25, subindices.pm10, subindices.o3)))
 
 
+_model_lock = threading.Lock()
+
 @lru_cache(maxsize=1)
+def _get_demo_forecast_model_cached() -> DemoForecastModel:
+    return DemoForecastModel()
+
 def get_demo_forecast_model() -> DemoForecastModel:
     """Keep the pre-generated NetCDF tensors in memory for the server lifetime."""
-    return DemoForecastModel()
+    with _model_lock:
+        return _get_demo_forecast_model_cached()
 
 
 @lru_cache(maxsize=74)

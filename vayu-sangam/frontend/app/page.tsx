@@ -1,154 +1,207 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import Map, { NavigationControl } from 'react-map-gl/maplibre';
-import 'maplibre-gl/dist/maplibre-gl.css';
-import { Wind, Thermometer, Flame, AlertTriangle, Layers, Map as MapIcon, Activity } from 'lucide-react';
+import { Activity, Wind, AlertTriangle, Layers, Play, Pause } from 'lucide-react';
+
+import TopNav from './components/TopNav';
+import KPICard from './components/KPICard';
+import DashboardMap from './components/DashboardMap';
+import ScenarioSidebar from './components/ScenarioSidebar';
+
+const API = 'http://localhost:8000';
 
 export default function Home() {
-  const [forecast, setForecast] = useState<any[]>([]);
-  const [explainability, setExplainability] = useState<any>(null);
-  
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+  const [currentHour, setCurrentHour] = useState(24);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [stubbleReduction, setStubbleReduction] = useState(0.0);
+
+  const [scenarioData, setScenarioData] = useState<any>(null);
+  const [inversionData, setInversionData] = useState<any>(null);
+  const [sourcesData, setSourcesData] = useState<any>(null);
+  const [gridData, setGridData] = useState<any>(null);
+  const [explanationData, setExplanationData] = useState<any>(null);
+
+  // Playback effect
   useEffect(() => {
-    // Fetch mock data from our FastAPI backend
-    fetch('http://localhost:8000/api/forecast/72-hours')
-      .then(res => res.json())
-      .then(data => setForecast(data.forecast))
-      .catch(err => console.error(err));
+    if (!isPlaying) return;
+    const interval = setInterval(() => {
+      setCurrentHour(prev => (prev >= 72 ? 0 : prev + 1));
+    }, 1000); // 1 second per hour
+    return () => clearInterval(interval);
+  }, [isPlaying]);
 
-    fetch('http://localhost:8000/api/explainability')
-      .then(res => res.json())
-      .then(data => setExplainability(data))
-      .catch(err => console.error(err));
-  }, []);
+  // Fetch Forecast Grid Data
+  useEffect(() => {
+    fetch(`${API}/api/forecast/grid?hour=${currentHour}&variable=pm25`)
+      .then(r => r.json()).then(setGridData)
+      .catch(() => setGridData(null));
+  }, [currentHour]);
 
-  const currentData = forecast.length > 0 ? forecast[0] : null;
+  // Fetch Scenario
+  useEffect(() => {
+    fetch(`${API}/api/scenario`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stubble_reduction: stubbleReduction, hour: currentHour }),
+    })
+      .then(r => r.json()).then(setScenarioData)
+      .catch(() => setScenarioData(null));
+  }, [stubbleReduction, currentHour]);
+
+  // Fetch Inversion
+  useEffect(() => {
+    fetch(`${API}/api/inversion?hour=${currentHour}`)
+      .then(r => r.json()).then(setInversionData)
+      .catch(() => setInversionData(null));
+  }, [currentHour]);
+
+  // Fetch Sources (Fires)
+  useEffect(() => {
+    fetch(`${API}/api/sources?hour=${currentHour}`)
+      .then(r => r.json()).then(setSourcesData)
+      .catch(() => setSourcesData(null));
+  }, [currentHour]);
+
+  // Fetch Explanation
+  useEffect(() => {
+    fetch(`${API}/api/explanation?hour=${currentHour}`)
+      .then(r => r.json()).then(setExplanationData)
+      .catch(() => setExplanationData(null));
+  }, [currentHour]);
+
+  const aqiColor = (aqi: number) => {
+    if (!aqi) return 'text-gray-400';
+    if (aqi <= 50)  return 'text-green-500';
+    if (aqi <= 100) return 'text-lime-500';
+    if (aqi <= 200) return 'text-yellow-500';
+    if (aqi <= 300) return 'text-orange-500';
+    if (aqi <= 400) return 'text-red-500';
+    return 'text-purple-500';
+  };
+
+  const aqiLabel = (aqi: number) => {
+    if (!aqi) return '—';
+    if (aqi <= 50)  return 'Good';
+    if (aqi <= 100) return 'Satisfactory';
+    if (aqi <= 200) return 'Moderate';
+    if (aqi <= 300) return 'Poor';
+    if (aqi <= 400) return 'Very Poor';
+    return 'Severe';
+  };
+
+  const pblHeight = inversionData?.pbl_height_m ?? inversionData?.pblh ?? null;
+  const inversionCategory = inversionData?.category ?? inversionData?.trapping_category ?? '—';
+  const clusters = sourcesData?.sources ?? null;
+  const isDark = theme === 'dark';
 
   return (
-    <div className="flex h-screen bg-[#0b0e14] text-white font-sans overflow-hidden">
-      {/* Sidebar */}
-      <div className="w-80 bg-[#151a23] border-r border-gray-800 flex flex-col z-10 shadow-xl">
-        <div className="p-6 border-b border-gray-800">
-          <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-emerald-400 flex items-center gap-2">
-            <Wind className="w-6 h-6 text-blue-400" />
-            VayuSangam
-          </h1>
-          <p className="text-xs text-gray-400 mt-1">Physics-Informed AI AQI Dashboard</p>
-        </div>
+    <div className={`flex flex-col h-screen font-sans overflow-hidden transition-colors duration-300 ${
+      isDark ? 'bg-[#0b0e14] text-white' : 'bg-gray-50 text-slate-900'
+    }`}>
+      <TopNav theme={theme} toggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} />
+
+      <div className="flex flex-1 overflow-hidden">
         
-        <div className="flex-1 overflow-y-auto p-4 space-y-6">
-          {/* Main Stats */}
-          {currentData && (
-            <div className="bg-[#1e2532] p-4 rounded-xl border border-gray-700/50 relative overflow-hidden group">
-              <div className="absolute top-0 right-0 w-24 h-24 bg-red-500/10 rounded-full blur-2xl -mr-10 -mt-10 transition-transform group-hover:scale-150"></div>
-              <h2 className="text-sm text-gray-400 font-medium mb-1 uppercase tracking-wider">Current AQI</h2>
-              <div className="flex items-end gap-3">
-                <span className="text-5xl font-black text-red-400">{currentData.aqi}</span>
-                <span className="text-red-400 font-semibold mb-1">SEVERE</span>
-              </div>
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                <div className="bg-[#151a23] p-2 rounded-lg">
-                  <div className="text-xs text-gray-400">PM2.5</div>
-                  <div className="font-semibold">{currentData.pm25.toFixed(1)}</div>
-                </div>
-                <div className="bg-[#151a23] p-2 rounded-lg">
-                  <div className="text-xs text-gray-400">PM10</div>
-                  <div className="font-semibold">{currentData.pm10.toFixed(1)}</div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Explainability Panel */}
-          {explainability && (
-            <div className="bg-[#1e2532] p-4 rounded-xl border border-gray-700/50">
-              <h2 className="text-sm text-gray-400 font-medium mb-3 uppercase tracking-wider flex items-center gap-2">
-                <Activity className="w-4 h-4" /> Primary Drivers
-              </h2>
-              <div className="space-y-3">
-                {explainability.primary_drivers.map((driver: any, idx: number) => (
-                  <div key={idx} className="flex justify-between items-center text-sm bg-[#151a23] p-2 rounded-lg">
-                    <span className="text-gray-300">{driver.factor}</span>
-                    <span className="text-red-400 font-bold">{driver.impact}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-3 text-xs text-gray-400 bg-red-500/10 p-2 rounded-lg border border-red-500/20">
-                {explainability.summary}
-              </div>
-            </div>
-          )}
-
-          {/* Plume & Inversion Panel */}
-          {currentData && (
-            <div className="space-y-4">
-              <div className="bg-[#1e2532] p-4 rounded-xl border border-gray-700/50">
-                <h2 className="text-sm text-gray-400 font-medium mb-3 uppercase tracking-wider flex items-center gap-2">
-                  <Layers className="w-4 h-4" /> Atmospheric State
-                </h2>
-                <div className="flex justify-between items-center text-sm mb-2">
-                  <span className="text-gray-400">PBL Height</span>
-                  <span className="font-mono">{currentData.pbl_height} m</span>
-                </div>
-                <div className="flex justify-between items-center text-sm mb-2">
-                  <span className="text-gray-400">Inversion Strength</span>
-                  <span className={`font-bold ${currentData.inversion_strength === 'SEVERE' ? 'text-red-400' : 'text-yellow-400'}`}>
-                    {currentData.inversion_strength}
-                  </span>
-                </div>
-              </div>
-
-              <div className="bg-[#1e2532] p-4 rounded-xl border border-gray-700/50">
-                <h2 className="text-sm text-gray-400 font-medium mb-3 uppercase tracking-wider flex items-center gap-2">
-                  <Flame className="w-4 h-4 text-orange-400" /> Stubble Plume
-                </h2>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-gray-400">Plume Influence</span>
-                  <span className="font-bold text-orange-400">{currentData.plume_influence ? "HIGH" : "LOW"}</span>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col relative">
-        <div className="absolute top-4 left-4 z-10 flex gap-2">
-          <div className="bg-[#151a23]/90 backdrop-blur border border-gray-700 px-4 py-2 rounded-lg flex items-center gap-2 shadow-lg">
-            <MapIcon className="w-4 h-4 text-gray-400" />
-            <span className="text-sm font-medium">Delhi-NCR High-Resolution Domain</span>
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col p-5 gap-5 overflow-hidden">
+          
+          <div className="grid grid-cols-4 gap-4 shrink-0">
+            <KPICard
+              theme={theme}
+              title="AQI (Overall)"
+              value={scenarioData ? scenarioData.scenario_aqi : '—'}
+              subtitle={scenarioData ? aqiLabel(scenarioData.scenario_aqi) : 'Connecting…'}
+              icon={<Activity className="w-4 h-4 text-red-500" />}
+              colorClass={aqiColor(scenarioData?.scenario_aqi)}
+              bgGradient={theme === 'dark' ? 'bg-gradient-to-br from-[#181c25] to-[#25181a]' : 'bg-gradient-to-br from-white to-red-50'}
+            />
+            <KPICard
+              theme={theme}
+              title="PM2.5"
+              value={scenarioData ? scenarioData.scenario_pm25.toFixed(1) : '—'}
+              unit="µg/m³"
+              subtitle={scenarioData ? `Daily avg: ${scenarioData.baseline_pm25.toFixed(0)} µg/m³` : 'Connecting…'}
+              icon={<Wind className="w-4 h-4 text-orange-500" />}
+              colorClass="text-orange-500"
+            />
+            <KPICard
+              theme={theme}
+              title="O3 (Ozone)"
+              value={scenarioData ? scenarioData.scenario_o3.toFixed(1) : '—'}
+              unit="µg/m³"
+              subtitle={scenarioData ? `Sub-index: ${scenarioData.scenario_aqi_sub_indices?.o3?.toFixed(0) ?? '—'}` : 'Connecting…'}
+              icon={<AlertTriangle className="w-4 h-4 text-yellow-500" />}
+              colorClass="text-yellow-500"
+            />
+            <KPICard
+              theme={theme}
+              title="Inversion Layer"
+              value={pblHeight !== null ? pblHeight.toFixed(0) : '—'}
+              unit="m"
+              subtitle={inversionData ? `${inversionCategory} · ${inversionData.wind_speed_mps?.toFixed(1) ?? '—'} m/s` : 'Connecting…'}
+              icon={<Layers className="w-4 h-4 text-blue-500" />}
+              colorClass="text-blue-500"
+              bgGradient={theme === 'dark' ? 'bg-gradient-to-br from-[#181c25] to-[#181e2b]' : 'bg-gradient-to-br from-white to-blue-50'}
+            />
           </div>
-        </div>
 
-        {/* MapLibre Map */}
-        <div className="flex-1 bg-gray-900">
-          <Map
-            initialViewState={{
-              longitude: 77.2090,
-              latitude: 28.6139,
-              zoom: 8
-            }}
-            mapStyle="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
-          >
-            <NavigationControl position="bottom-right" />
-          </Map>
-        </div>
-
-        {/* 72 Hour Forecast Timeline Slider */}
-        <div className="h-32 bg-[#151a23] border-t border-gray-800 p-4">
-          <h3 className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2">72-Hour Forecast Timeline</h3>
-          <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
-            {forecast.map((f, i) => (
-              <div key={i} className="min-w-[80px] bg-[#1e2532] rounded-lg p-2 flex flex-col items-center justify-center border border-gray-700/50 hover:border-blue-500 cursor-pointer transition-colors">
-                <div className="text-[10px] text-gray-400">+{i}h</div>
-                <div className={`text-lg font-bold ${f.aqi > 400 ? 'text-red-500' : f.aqi > 300 ? 'text-red-400' : 'text-orange-400'}`}>
-                  {f.aqi}
-                </div>
-              </div>
-            ))}
+          {/* Map Area */}
+          <div className="flex-1 flex flex-col min-h-0">
+            <DashboardMap theme={theme} fireClusters={clusters ?? []} grid={gridData} hour={currentHour} />
           </div>
+
+          {/* Timeline Controls */}
+          <div className={`shrink-0 rounded-xl border p-4 flex items-center gap-4 transition-colors ${
+            isDark ? 'bg-[#181c25] border-[#2a3140]' : 'bg-white border-gray-200 shadow-sm'
+          }`}>
+            <button 
+              onClick={() => setIsPlaying(!isPlaying)}
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
+                isDark 
+                  ? 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30' 
+                  : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
+              }`}
+            >
+              {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-1" />}
+            </button>
+            <div className="flex-1 flex flex-col gap-1">
+              <div className="flex justify-between items-center text-xs font-semibold">
+                <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Now (0h)</span>
+                <span className={isDark ? 'text-blue-400' : 'text-blue-600'}>Forecast +{currentHour}h</span>
+                <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>+72h</span>
+              </div>
+              <input 
+                type="range" 
+                min="0" 
+                max="72" 
+                value={currentHour}
+                onChange={(e) => {
+                  setCurrentHour(parseInt(e.target.value, 10));
+                  setIsPlaying(false);
+                }}
+                className={`w-full h-2 rounded-lg appearance-none cursor-pointer ${
+                  isDark ? 'bg-gray-700 accent-blue-500' : 'bg-gray-200 accent-blue-600'
+                }`}
+              />
+            </div>
+          </div>
+
         </div>
+
+        {/* Right Sidebar */}
+        <ScenarioSidebar
+          theme={theme}
+          stubbleReduction={stubbleReduction}
+          setStubbleReduction={setStubbleReduction}
+          clusters={clusters}
+          deltaAQI={scenarioData?.aqi_change ?? 0}
+          deltaPM25={scenarioData?.pm25_change ?? 0}
+          baselineAQI={scenarioData?.baseline_aqi ?? 0}
+          scenarioAQI={scenarioData?.scenario_aqi ?? 0}
+          dominantPollutant={scenarioData?.scenario_dominant_pollutant ?? '—'}
+          explanation={explanationData}
+        />
       </div>
     </div>
   );

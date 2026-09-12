@@ -220,39 +220,39 @@ aggressive = 0.40
 
 ## T7.1 Dashboard shell
 
--   [ ] Next.js
--   [ ] responsive layout
--   [ ] header
--   [ ] KPI cards
+-   [x] Next.js
+-   [x] responsive layout
+-   [x] header
+-   [x] KPI cards
 
 ## T7.2 Map
 
--   [ ] Delhi NCR base map
--   [ ] PM2.5 raster/heatmap
--   [ ] fire points
--   [ ] HCHO clusters
--   [ ] wind vectors
--   [ ] plume line
+-   [x] Delhi NCR base map
+-   [x] PM2.5 raster/heatmap (Mock GeoJSON implemented)
+-   [x] fire points (Sourced from /api/sources)
+-   [x] HCHO clusters
+-   [x] wind vectors
+-   [x] plume line
 
 ## T7.3 Timeline
 
--   [ ] 0--72 h slider
--   [ ] play/pause
--   [ ] selected hour
+-   [x] 0--72 h slider
+-   [x] play/pause
+-   [x] selected hour
 
 ## T7.4 Intelligence panels
 
--   [ ] inversion card
--   [ ] source attribution
--   [ ] explanation
--   [ ] uncertainty
+-   [x] inversion card
+-   [x] source attribution
+-   [x] explanation
+-   [x] uncertainty
 
 ## T7.5 What-if
 
--   [ ] stubble slider
--   [ ] baseline card
--   [ ] scenario card
--   [ ] delta visualization
+-   [x] stubble slider
+-   [x] baseline card
+-   [x] scenario card
+-   [x] delta visualization
 
 ------------------------------------------------------------------------
 
