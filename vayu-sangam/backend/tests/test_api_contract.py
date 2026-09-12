@@ -13,8 +13,12 @@ from app.main import (
     get_forecast,
     get_forecast_grid,
     get_health,
+    get_cpcb,
+    get_cpcb_latest,
+    get_dashboard_summary,
     get_inversion,
     get_inversion_series,
+    get_map_data,
     get_map_layers,
     get_sources,
     read_root,
@@ -28,7 +32,8 @@ class ApiContractTests(unittest.TestCase):
         paths = app.openapi()["paths"]
         for path in (
             "/api/health", "/api/forecast", "/api/forecast/grid", "/api/sources",
-            "/api/inversion", "/api/scenario", "/api/explanation",
+            "/api/inversion", "/api/scenario", "/api/explanation", "/api/cpcb", "/api/cpcb/latest",
+            "/api/dashboard-summary", "/api/map-data",
         ):
             self.assertIn(path, paths)
 
@@ -39,6 +44,19 @@ class ApiContractTests(unittest.TestCase):
         grid = get_forecast_grid(24, "pm25")
         self.assertEqual(grid["variable"], "pm25")
         self.assertEqual(len(grid["values"]), len(grid["lat"]))
+        cpcb = get_cpcb()
+        self.assertIsInstance(cpcb, list)
+        if cpcb:
+            self.assertIn("aqi", cpcb[0])
+            self.assertIn("hour", cpcb[0])
+        latest_cpcb = get_cpcb_latest()
+        self.assertLessEqual(len(latest_cpcb), len(cpcb))
+        dashboard = get_dashboard_summary(72, 24)
+        self.assertIn("forecast", dashboard)
+        self.assertIn("explanation", dashboard)
+        map_data = get_map_data(24, "pm25")
+        self.assertIn("grid", map_data)
+        self.assertIn("sources", map_data)
         self.assertIn("sources", get_sources(24))
         self.assertIn("category", get_inversion(24))
         self.assertEqual(len(get_inversion_series()["series"]), 73)

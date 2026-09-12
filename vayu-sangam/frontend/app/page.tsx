@@ -1,208 +1,83 @@
-"use client";
+import { ArrowRight, Map, ShieldAlert, Zap, Activity } from 'lucide-react';
+import Link from 'next/link';
 
-import React, { useState, useEffect } from 'react';
-import { Activity, Wind, AlertTriangle, Layers, Play, Pause } from 'lucide-react';
+import CurrentAqiCard from './components/CurrentAqiCard';
 
-import TopNav from './components/TopNav';
-import KPICard from './components/KPICard';
-import DashboardMap from './components/DashboardMap';
-import ScenarioSidebar from './components/ScenarioSidebar';
+const questions = [
+  { q: 'Is it safe outside right now?', href: '/dashboard', icon: ShieldAlert },
+  { q: 'When will air quality improve?', href: '/dashboard', icon: Activity },
+  { q: 'Where are the pollution hotspots?', href: '/map', icon: Map },
+  { q: "What's driving today's pollution?", href: '/dashboard', icon: Zap },
+];
 
-const API = 'http://localhost:8000';
+const steps = [
+  { step: 1, title: 'Live Data Ingestion', desc: 'Real-time assimilation of satellite imagery, CPCB sensors, and Open-Meteo weather grids.' },
+  { step: 2, title: 'WRF-Chem + ML', desc: 'Coupled physical modeling and XGBoost bias correction generating a 72-hour deterministic forecast.' },
+  { step: 3, title: 'Source Attribution', desc: 'Inversion trapping index and live wind-plume vectoring to pinpoint driving sources.' },
+  { step: 4, title: 'Actionable Guidance', desc: 'Transparent, explainable UI delivering data-backed insights for policy and public safety.' },
+];
 
-export default function Home() {
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
-  const [currentHour, setCurrentHour] = useState(24);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [stubbleReduction, setStubbleReduction] = useState(0.0);
-
-  const [scenarioData, setScenarioData] = useState<any>(null);
-  const [inversionData, setInversionData] = useState<any>(null);
-  const [sourcesData, setSourcesData] = useState<any>(null);
-  const [gridData, setGridData] = useState<any>(null);
-  const [explanationData, setExplanationData] = useState<any>(null);
-
-  // Playback effect
-  useEffect(() => {
-    if (!isPlaying) return;
-    const interval = setInterval(() => {
-      setCurrentHour(prev => (prev >= 72 ? 0 : prev + 1));
-    }, 1000); // 1 second per hour
-    return () => clearInterval(interval);
-  }, [isPlaying]);
-
-  // Fetch Forecast Grid Data
-  useEffect(() => {
-    fetch(`${API}/api/forecast/grid?hour=${currentHour}&variable=pm25`)
-      .then(r => r.json()).then(setGridData)
-      .catch(() => setGridData(null));
-  }, [currentHour]);
-
-  // Fetch Scenario
-  useEffect(() => {
-    fetch(`${API}/api/scenario`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stubble_reduction: stubbleReduction, hour: currentHour }),
-    })
-      .then(r => r.json()).then(setScenarioData)
-      .catch(() => setScenarioData(null));
-  }, [stubbleReduction, currentHour]);
-
-  // Fetch Inversion
-  useEffect(() => {
-    fetch(`${API}/api/inversion?hour=${currentHour}`)
-      .then(r => r.json()).then(setInversionData)
-      .catch(() => setInversionData(null));
-  }, [currentHour]);
-
-  // Fetch Sources (Fires)
-  useEffect(() => {
-    fetch(`${API}/api/sources?hour=${currentHour}`)
-      .then(r => r.json()).then(setSourcesData)
-      .catch(() => setSourcesData(null));
-  }, [currentHour]);
-
-  // Fetch Explanation
-  useEffect(() => {
-    fetch(`${API}/api/explanation?hour=${currentHour}`)
-      .then(r => r.json()).then(setExplanationData)
-      .catch(() => setExplanationData(null));
-  }, [currentHour]);
-
-  const aqiColor = (aqi: number) => {
-    if (!aqi) return 'text-gray-400';
-    if (aqi <= 50)  return 'text-green-500';
-    if (aqi <= 100) return 'text-lime-500';
-    if (aqi <= 200) return 'text-yellow-500';
-    if (aqi <= 300) return 'text-orange-500';
-    if (aqi <= 400) return 'text-red-500';
-    return 'text-purple-500';
-  };
-
-  const aqiLabel = (aqi: number) => {
-    if (!aqi) return '—';
-    if (aqi <= 50)  return 'Good';
-    if (aqi <= 100) return 'Satisfactory';
-    if (aqi <= 200) return 'Moderate';
-    if (aqi <= 300) return 'Poor';
-    if (aqi <= 400) return 'Very Poor';
-    return 'Severe';
-  };
-
-  const pblHeight = inversionData?.pbl_height_m ?? inversionData?.pblh ?? null;
-  const inversionCategory = inversionData?.category ?? inversionData?.trapping_category ?? '—';
-  const clusters = sourcesData?.sources ?? null;
-  const isDark = theme === 'dark';
-
+export default function LandingPage() {
   return (
-    <div className={`flex flex-col h-screen font-sans overflow-hidden transition-colors duration-300 ${
-      isDark ? 'bg-[#0b0e14] text-white' : 'bg-gray-50 text-slate-900'
-    }`}>
-      <TopNav theme={theme} toggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} />
-
-      <div className="flex flex-1 overflow-hidden">
-        
-        {/* Main Content */}
-        <div className="flex-1 flex flex-col p-5 gap-5 overflow-hidden">
-          
-          <div className="grid grid-cols-4 gap-4 shrink-0">
-            <KPICard
-              theme={theme}
-              title="AQI (Overall)"
-              value={scenarioData ? scenarioData.scenario_aqi : '—'}
-              subtitle={scenarioData ? aqiLabel(scenarioData.scenario_aqi) : 'Connecting…'}
-              icon={<Activity className="w-4 h-4 text-red-500" />}
-              colorClass={aqiColor(scenarioData?.scenario_aqi)}
-              bgGradient={theme === 'dark' ? 'bg-gradient-to-br from-[#181c25] to-[#25181a]' : 'bg-gradient-to-br from-white to-red-50'}
-            />
-            <KPICard
-              theme={theme}
-              title="PM2.5"
-              value={scenarioData ? scenarioData.scenario_pm25.toFixed(1) : '—'}
-              unit="µg/m³"
-              subtitle={scenarioData ? `Daily avg: ${scenarioData.baseline_pm25.toFixed(0)} µg/m³` : 'Connecting…'}
-              icon={<Wind className="w-4 h-4 text-orange-500" />}
-              colorClass="text-orange-500"
-            />
-            <KPICard
-              theme={theme}
-              title="O3 (Ozone)"
-              value={scenarioData ? scenarioData.scenario_o3.toFixed(1) : '—'}
-              unit="µg/m³"
-              subtitle={scenarioData ? `Sub-index: ${scenarioData.scenario_aqi_sub_indices?.o3?.toFixed(0) ?? '—'}` : 'Connecting…'}
-              icon={<AlertTriangle className="w-4 h-4 text-yellow-500" />}
-              colorClass="text-yellow-500"
-            />
-            <KPICard
-              theme={theme}
-              title="Inversion Layer"
-              value={pblHeight !== null ? pblHeight.toFixed(0) : '—'}
-              unit="m"
-              subtitle={inversionData ? `${inversionCategory} · ${inversionData.wind_speed_mps?.toFixed(1) ?? '—'} m/s` : 'Connecting…'}
-              icon={<Layers className="w-4 h-4 text-blue-500" />}
-              colorClass="text-blue-500"
-              bgGradient={theme === 'dark' ? 'bg-gradient-to-br from-[#181c25] to-[#181e2b]' : 'bg-gradient-to-br from-white to-blue-50'}
-            />
-          </div>
-
-          {/* Map Area */}
-          <div className="flex-1 flex flex-col min-h-0">
-            <DashboardMap theme={theme} fireClusters={clusters ?? []} grid={gridData} hour={currentHour} />
-          </div>
-
-          {/* Timeline Controls */}
-          <div className={`shrink-0 rounded-xl border p-4 flex items-center gap-4 transition-colors ${
-            isDark ? 'bg-[#181c25] border-[#2a3140]' : 'bg-white border-gray-200 shadow-sm'
-          }`}>
-            <button 
-              onClick={() => setIsPlaying(!isPlaying)}
-              className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
-                isDark 
-                  ? 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30' 
-                  : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
-              }`}
-            >
-              {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-1" />}
-            </button>
-            <div className="flex-1 flex flex-col gap-1">
-              <div className="flex justify-between items-center text-xs font-semibold">
-                <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Now (0h)</span>
-                <span className={isDark ? 'text-blue-400' : 'text-blue-600'}>Forecast +{currentHour}h</span>
-                <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>+72h</span>
-              </div>
-              <input 
-                type="range" 
-                min="0" 
-                max="72" 
-                value={currentHour}
-                onChange={(e) => {
-                  setCurrentHour(parseInt(e.target.value, 10));
-                  setIsPlaying(false);
-                }}
-                className={`w-full h-2 rounded-lg appearance-none cursor-pointer ${
-                  isDark ? 'bg-gray-700 accent-blue-500' : 'bg-gray-200 accent-blue-600'
-                }`}
-              />
-            </div>
-          </div>
-
+    <div className="flex flex-col items-center">
+      <section className="w-full max-w-6xl mx-auto px-6 py-20 md:py-24 flex flex-col items-center text-center">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-500/10 text-teal-400 text-sm font-medium mb-8 border border-teal-500/20">
+          <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
+          Live Forecasting Active
         </div>
 
-        {/* Right Sidebar */}
-        <ScenarioSidebar
-          theme={theme}
-          stubbleReduction={stubbleReduction}
-          setStubbleReduction={setStubbleReduction}
-          clusters={clusters}
-          deltaAQI={scenarioData?.aqi_change ?? 0}
-          deltaPM25={scenarioData?.pm25_change ?? 0}
-          baselineAQI={scenarioData?.baseline_aqi ?? 0}
-          scenarioAQI={scenarioData?.scenario_aqi ?? 0}
-          dominantPollutant={scenarioData?.scenario_dominant_pollutant ?? '—'}
-          explanation={explanationData}
-        />
-      </div>
+        <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+          Predicting the Air <br /> We Breathe.
+        </h1>
+
+        <p className="text-lg md:text-xl text-gray-400 max-w-2xl mb-12">
+          VayuSangam is an advanced WRF-Chem and ML-powered intelligence platform delivering 72-hour coupled weather and pollution forecasting for Delhi NCR.
+        </p>
+
+        <div className="flex flex-col sm:flex-row gap-4">
+          <Link href="/dashboard" className="px-8 py-4 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-semibold transition-all flex items-center justify-center gap-2 hover:shadow-[0_0_20px_rgba(20,184,166,0.3)]">
+            Check current air <Activity className="w-5 h-5" />
+          </Link>
+          <Link href="/map" className="px-8 py-4 rounded-xl bg-gray-800 hover:bg-gray-700 text-white font-semibold transition-all flex items-center justify-center gap-2 border border-gray-700">
+            Explore live map <Map className="w-5 h-5" />
+          </Link>
+        </div>
+      </section>
+
+      <CurrentAqiCard />
+
+      <section className="w-full max-w-6xl mx-auto px-6 mb-32">
+        <h3 className="text-2xl font-bold mb-8 text-center">Start with your question</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {questions.map((item) => (
+            <Link key={item.q} href={item.href} className="group p-6 rounded-2xl bg-[#131821] border border-gray-800 hover:border-teal-500/50 transition-colors flex flex-col justify-between h-full">
+              <item.icon className="w-8 h-8 text-teal-500/70 mb-4 group-hover:text-teal-400 transition-colors" />
+              <div>
+                <h4 className="font-semibold text-lg group-hover:text-teal-50 transition-colors">{item.q}</h4>
+                <div className="flex items-center gap-2 mt-4 text-sm text-gray-500 group-hover:text-teal-400 transition-colors">
+                  View Data <ArrowRight className="w-4 h-4" />
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <section className="w-full max-w-6xl mx-auto px-6 mb-32">
+        <h3 className="text-2xl font-bold mb-12 text-center">How VayuSangam Works</h3>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 relative">
+          <div className="hidden md:block absolute top-8 left-12 right-12 h-0.5 bg-gray-800" />
+          {steps.map((item) => (
+            <div key={item.step} className="relative pt-8 md:pt-0">
+              <div className="w-16 h-16 rounded-2xl bg-[#131821] border-2 border-gray-800 flex items-center justify-center text-xl font-bold mb-6 relative z-10 mx-auto md:mx-0">
+                {item.step}
+              </div>
+              <h4 className="font-semibold text-lg mb-2 text-center md:text-left">{item.title}</h4>
+              <p className="text-gray-400 text-sm text-center md:text-left leading-relaxed">{item.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
