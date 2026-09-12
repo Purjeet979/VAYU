@@ -4,3 +4,7 @@ xarray
 netCDF4
 geopandas
 scipy
+PyYAML
+
+fastapi
+uvicorn

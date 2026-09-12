@@ -89,32 +89,32 @@ Output:
 
 ## T2.1 Fire clustering
 
--   [ ] DBSCAN on fire coordinates
--   [ ] cluster FRP sum/mean/max
--   [ ] cluster centroid
+-   [x] DBSCAN on fire coordinates
+-   [x] cluster FRP sum/mean/max
+-   [x] cluster centroid
 
 ## T2.2 Wind alignment
 
--   [ ] Calculate bearing from source to Delhi
--   [ ] Calculate wind-direction difference
--   [ ] Convert to alignment score
+-   [x] Calculate bearing from source to Delhi
+-   [x] Calculate wind-direction difference
+-   [x] Convert to alignment score
 
 ## T2.3 Travel-time estimate
 
--   [ ] Estimate source-to-Delhi distance
--   [ ] Estimate travel time from wind speed
--   [ ] Return uncertainty band
+-   [x] Estimate source-to-Delhi distance
+-   [x] Estimate travel time from wind speed
+-   [x] Return uncertainty band
 
 ## T2.4 Source score
 
 Implement configurable score from `configs/demo.yaml`.
 
--   [ ] FRP
--   [ ] HCHO
--   [ ] NO2 if available
--   [ ] wind alignment
--   [ ] proximity
--   [ ] agriculture score
+-   [x] FRP
+-   [x] HCHO
+-   [x] NO2 if available (reported as unavailable in current demo assets)
+-   [x] wind alignment
+-   [x] proximity
+-   [x] agriculture score
 
 ------------------------------------------------------------------------
 
@@ -141,27 +141,29 @@ class ForecastModel:
         raise NotImplementedError
 ```
 
+-   [x] Model-agnostic forecast interface implemented
+
 ## T4.2 Demo model
 
--   [ ] Load demo NetCDF
--   [ ] Return forecast tensor
--   [ ] Add deterministic scenario multiplier
+-   [x] Load demo NetCDF
+-   [x] Return forecast tensor
+-   [x] Add deterministic scenario multiplier
 
 ## T4.3 Surrogate model
 
--   [ ] Build training dataset interface
--   [ ] Implement PyTorch temporal model
--   [ ] Save model checkpoint
--   [ ] Implement inference
--   [ ] Add CPU fallback
+-   [x] Build training dataset interface
+-   [x] Implement PyTorch temporal model
+-   [x] Save model checkpoint
+-   [x] Implement inference
+-   [x] Add CPU fallback
 
 ## T4.4 XGBoost correction
 
--   [ ] Build feature matrix
--   [ ] Train baseline XGBoost
--   [ ] Save model
--   [ ] Implement prediction
--   [ ] Add feature importance
+-   [x] Build feature matrix
+-   [x] Train baseline XGBoost
+-   [x] Save model
+-   [x] Implement prediction
+-   [x] Add feature importance
 
 Do not report performance metrics unless a proper train/validation/test
 split has been performed.
@@ -191,26 +193,26 @@ aggressive = 0.40
 
 ## T6.1 FastAPI
 
--   [ ] `/api/health`
--   [ ] `/api/forecast`
--   [ ] `/api/forecast/grid`
--   [ ] `/api/sources`
--   [ ] `/api/inversion`
--   [ ] `/api/scenario`
--   [ ] `/api/explanation`
+-   [x] `/api/health`
+-   [x] `/api/forecast`
+-   [x] `/api/forecast/grid`
+-   [x] `/api/sources`
+-   [x] `/api/inversion`
+-   [x] `/api/scenario`
+-   [x] `/api/explanation`
 
 ## T6.2 Validation
 
--   [ ] Pydantic schemas
--   [ ] invalid hour handling
--   [ ] variable whitelist
--   [ ] scenario range 0--1
+-   [x] Pydantic schemas
+-   [x] invalid hour handling
+-   [x] variable whitelist
+-   [x] scenario range 0--1
 
 ## T6.3 Caching
 
--   [ ] Cache demo forecast
--   [ ] Cache grid tiles/JSON
--   [ ] Cache scenario responses
+-   [x] Cache demo forecast
+-   [x] Cache grid tiles/JSON
+-   [x] Cache scenario responses
 
 ------------------------------------------------------------------------
 

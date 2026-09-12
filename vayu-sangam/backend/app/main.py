@@ -1,90 +1,142 @@
-from fastapi import FastAPI
+from datetime import datetime, timezone
+
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import random
-from datetime import datetime, timedelta
+
+from .api_service import (
+    GRID_VARIABLES,
+    build_explanation,
+    cached_forecast,
+    cached_grid,
+    cached_inversion,
+    cached_sources,
+    get_demo_forecast_model,
+)
+from .scenario_engine import get_scenario_engine
+from .schemas import ScenarioRequest, ScenarioResponse
 
 app = FastAPI(title="VayuSangam-AI API")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 @app.get("/")
 def read_root():
-    return {"message": "Welcome to VayuSangam-AI Backend API"}
+    return {"message": "Welcome to VayuSangam-AI Backend API", "docs": "/docs"}
+
+
+@app.get("/api/health")
+def get_health():
+    """Validate that all bundled demo engines and assets are loadable."""
+    try:
+        model = get_demo_forecast_model()
+        cached_sources(0)
+        cached_inversion(0)
+        return {
+            "status": "ok",
+            "mode": "demo",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "services": {
+                "forecast": {"status": "ok", "model": model.model_name, "hours": model.max_horizon},
+                "sources": {"status": "ok"},
+                "inversion": {"status": "ok"},
+                "scenario": {"status": "ok"},
+            },
+        }
+    except Exception as error:  # health must report failure rather than hide it
+        raise HTTPException(status_code=503, detail=f"Demo service unavailable: {error}") from error
+
+
+@app.get("/api/forecast")
+def get_forecast(hours: int = Query(default=72, ge=1, le=73, description="Number of hourly forecast steps")):
+    """Return a cached timeline built from the deterministic demo forecast model."""
+    return cached_forecast(hours)
+
+
+@app.get("/api/forecast/grid")
+def get_forecast_grid(
+    hour: int = Query(default=24, ge=0, le=72, description="Forecast hour"),
+    variable: str = Query(default="pm25", description="Grid variable"),
+):
+    """Return one cached, JSON-safe gridded forecast field."""
+    try:
+        return cached_grid(hour, variable)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
 
 @app.get("/api/forecast/72-hours")
 def get_72_hour_forecast():
-    """
-    Returns mock 72-hour forecast data for Delhi NCR.
-    """
-    forecast = []
-    base_time = datetime.now()
-    
-    for i in range(72):
-        time = base_time + timedelta(hours=i)
-        
-        # Simulate diurnal cycle
-        hour = time.hour
-        if 0 <= hour < 8:
-            aqi_base = 350 # higher at night due to inversion
-        elif 8 <= hour < 16:
-            aqi_base = 250 # lower in day
-        else:
-            aqi_base = 300
-            
-        # Add random noise and trend
-        aqi = int(aqi_base + random.uniform(-20, 50) + (i * 0.5))
-        
-        forecast.append({
-            "time": time.isoformat(),
-            "aqi": aqi,
-            "pm25": aqi * 0.6,
-            "pm10": aqi * 1.2,
-            "temperature": round(15 + random.uniform(-2, 5) + (5 if 8 < hour < 18 else 0), 1),
-            "wind_speed": round(random.uniform(0.5, 3.5), 1),
-            "pbl_height": int(random.uniform(100, 300) if hour < 8 else random.uniform(500, 1500)),
-            "inversion_strength": "SEVERE" if hour < 8 else "MODERATE" if hour > 18 else "WEAK",
-            "plume_influence": random.choice([True, False, False])
-        })
-        
-    return {"forecast": forecast}
+    """Backward-compatible endpoint for the Phase 1 frontend."""
+    modern_forecast = cached_forecast(72)["forecast"]
+    return {
+        "mode": "demo",
+        "forecast": [
+            {
+                "time": row["timestamp"], "aqi": row["aqi"], "pm25": row["pm25_ug_m3"],
+                "pm10": row["pm10_ug_m3"], "temperature": row["temperature_c"],
+                "wind_speed": row["wind_speed_mps"], "pbl_height": row["pbl_height_m"],
+                "inversion_strength": cached_inversion(row["hour"])["category"].upper(),
+                "plume_influence": bool(cached_sources(row["hour"])["sources"]),
+            }
+            for row in modern_forecast
+        ],
+    }
 
 @app.get("/api/map-layers")
 def get_map_layers():
-    """
-    Returns mock map data points for visualization.
-    """
-    return {
-        "active_fires": [
-            {"lat": 30.3, "lon": 75.8, "frp": 12.5, "confidence": 85},
-            {"lat": 29.9, "lon": 76.1, "frp": 8.0, "confidence": 70},
-        ],
-        "stubble_plume": {
-            "origin": "Punjab",
-            "trajectory": [
-                {"lat": 30.3, "lon": 75.8},
-                {"lat": 29.5, "lon": 76.5},
-                {"lat": 28.7, "lon": 77.1} # Reaching Delhi
-            ]
-        }
-    }
+    """Backward-compatible source layer that now returns calculated clusters."""
+    return cached_sources(24)
 
 @app.get("/api/explainability")
 def get_explainability():
-    """
-    Mock SHAP values/drivers.
-    """
-    return {
-        "primary_drivers": [
-            {"factor": "Strong atmospheric inversion", "impact": "+45 AQI"},
-            {"factor": "Incoming crop-burning plume", "impact": "+80 AQI"},
-            {"factor": "Low wind speed", "impact": "+20 AQI"}
-        ],
-        "summary": "Severe pollution episode expected due to nocturnal inversion combined with incoming biomass burning plume from North-West."
-    }
+    """Backward-compatible explanation endpoint using the Phase 2–4 engines."""
+    return build_explanation(24)
+
+
+@app.get("/api/sources")
+def get_sources(hour: int = Query(default=24, description="Forecast hour from 0 through 72")):
+    """Return ranked clustered fire sources and prototype transport estimates."""
+    try:
+        return cached_sources(hour)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@app.get("/api/inversion")
+def get_inversion(
+    hour: int = Query(default=24, ge=0, description="Forecast hour 0–72"),
+):
+    """Return inversion/trapping metrics for Delhi NCR at the given forecast hour."""
+    try:
+        return cached_inversion(hour)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@app.get("/api/inversion/series")
+def get_inversion_series():
+    """Return the full 73-hour inversion index series for the timeline chart."""
+    return {"series": [cached_inversion(hour) for hour in range(73)]}
+
+
+@app.post("/api/scenario", response_model=ScenarioResponse)
+def run_scenario(request: ScenarioRequest):
+    """Run a what-if stubble-reduction scenario and return PM2.5 / PM10 / O3 / AQI deltas."""
+    try:
+        return get_scenario_engine().run(
+            stubble_reduction=request.stubble_reduction,
+            hour=request.hour,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@app.get("/api/explanation")
+def get_explanation(hour: int = Query(default=24, ge=0, le=72, description="Forecast hour")):
+    """Return explainable prototype evidence for the selected forecast hour."""
+    return build_explanation(hour)

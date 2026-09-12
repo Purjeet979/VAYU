@@ -1,0 +1,58 @@
+source_intelligence:
+  # DBSCAN settings use great-circle distance, so they remain meaningful across
+  # latitude/longitude coordinates.
+  dbscan_epsilon_km: 25
+  dbscan_min_samples: 3
+  hcho_match_radius_km: 75
+  proximity_scale_km: 250
+  minimum_wind_speed_mps: 0.5
+  travel_time_uncertainty_fraction: 0.30
+
+  # Demo fires are generated over the Punjab/Haryana agricultural source area.
+  demo_agricultural_land_score: 1.0
+
+  # These heuristic weights are configurable and are not scientifically calibrated.
+  score_weights:
+    frp: 0.30
+    hcho: 0.20
+    no2: 0.15
+    wind_alignment: 0.15
+    proximity: 0.10
+    agricultural_land: 0.10
+
+inversion_intelligence:
+  # Delhi-NCR bounding box for spatial averaging.
+  delhi_lat_min: 28.3
+  delhi_lat_max: 29.0
+  delhi_lon_min: 76.8
+  delhi_lon_max: 77.6
+
+  # PBL height thresholds (m).  Values below pblh_shallow indicate strong trapping.
+  pblh_shallow_m: 200
+  pblh_deep_m: 1500
+
+  # Wind speed thresholds (m/s).  Below wind_calm indicates poor dispersion.
+  wind_calm_mps: 1.0
+  wind_strong_mps: 6.0
+
+  # Temperature thresholds (K).  Cool surface = stable = trapping.
+  t2_cool_k: 283.15
+  t2_warm_k: 308.15
+
+  # Relative-humidity thresholds (%).  High RH = haze = suppressed mixing.
+  rh_low: 30
+  rh_high: 85
+
+  # Composite-index weights (sum to 1.0). Not scientifically calibrated.
+  index_weights:
+    pblh:      0.40
+    wind:      0.30
+    stability: 0.20
+    rh:        0.10
+
+  # Category thresholds for inversion index [0, 1].
+  categories:
+    weak:     0.00
+    moderate: 0.25
+    strong:   0.50
+    severe:   0.75
