@@ -1,0 +1,50 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "cluster_id": 1,
+        "hcho_anomaly_score": 50,
+        "description": "High HCHO anomaly detected"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          76.7,
+          29.0
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "cluster_id": 2,
+        "hcho_anomaly_score": 30,
+        "description": "High HCHO anomaly detected"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          76.6,
+          28.9
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "cluster_id": 3,
+        "hcho_anomaly_score": 45,
+        "description": "High HCHO anomaly detected"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          76.8,
+          29.1
+        ]
+      }
+    }
+  ]
+}
