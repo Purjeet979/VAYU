@@ -1,47 +1,88 @@
 "use client";
 
 import Link from 'next/link';
-import { Wind, Code } from 'lucide-react';
+import { Wind, LayoutGrid, Map as MapIcon, FileText, Search, ChevronDown, User, Sun, Moon, Home } from 'lucide-react';
+import { usePathname } from 'next/navigation';
+import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
 
 export default function NavBar() {
-  const [mode, setMode] = useState<string | null>(null);
+  const pathname = usePathname();
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
 
-  useEffect(() => {
-    fetch('/api/health', { cache: 'no-store' })
-      .then(res => res.json())
-      .then(data => setMode(data.mode ?? 'unknown'))
-      .catch(() => setMode('unknown'));
-  }, []);
-
+  useEffect(() => setMounted(true), []);
+  
   return (
-    <nav className="flex flex-col gap-4 px-6 py-4 border-b border-gray-800 bg-[#0b0e14]/80 sticky top-0 z-50 backdrop-blur-md sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex flex-wrap items-center gap-4">
-        <Link href="/" className="flex items-center gap-2 text-xl font-bold text-teal-400 transition-transform hover:scale-105">
-          <Wind className="w-6 h-6" />
-          VayuSangam
-        </Link>
-        {mode && (
-          <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-gray-900 border border-gray-700 text-xs font-medium text-gray-300">
-            <span className={`w-2 h-2 rounded-full ${mode === 'live' ? 'bg-green-500 animate-pulse' : mode === 'demo' ? 'bg-orange-500' : 'bg-gray-500'}`} />
-            <span className="capitalize">{mode}</span>
-          </div>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center gap-5 text-sm font-medium">
-        <Link href="/map" className="text-gray-300 hover:text-teal-400 transition-colors">Map</Link>
-        <Link href="/dashboard" className="text-gray-300 hover:text-teal-400 transition-colors">Forecast</Link>
-        <Link href="/about" className="text-gray-300 hover:text-teal-400 transition-colors">About</Link>
-        
-        <a 
-          href="https://github.com/vayu-sangam/vayu-sangam" 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="text-gray-400 hover:text-white transition-colors sm:ml-2"
-          title="View on GitHub"
+    <nav className="flex items-center justify-between px-6 h-16 border-b border-panelBorder bg-background sticky top-0 z-50">
+      {/* Left: Logo */}
+      <Link href="/" className="flex items-center gap-2">
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan to-blue-500 flex items-center justify-center">
+          <Wind className="w-5 h-5 text-white" />
+        </div>
+        <span className="text-xl font-bold text-cyan">VayuSangam</span>
+      </Link>
+
+      {/* Center: Navigation Links */}
+      <div className="hidden md:flex items-center gap-8 h-full">
+        <Link 
+          href="/" 
+          className={`flex items-center gap-2 h-full px-2 border-b-2 transition-colors ${
+            pathname === '/' ? 'border-cyan text-cyan' : 'border-transparent text-gray-500 hover:text-foreground'
+          }`}
         >
-          <Code className="w-5 h-5" />
-        </a>
+          <Home className="w-4 h-4" />
+          <span className="font-medium">Home</span>
+        </Link>
+        <Link 
+          href="/forecast" 
+          className={`flex items-center gap-2 h-full px-2 border-b-2 transition-colors ${
+            pathname === '/forecast' ? 'border-cyan text-cyan' : 'border-transparent text-gray-500 hover:text-foreground'
+          }`}
+        >
+          <LayoutGrid className="w-4 h-4" />
+          <span className="font-medium">Forecast</span>
+        </Link>
+        <Link 
+          href="/map" 
+          className={`flex items-center gap-2 h-full px-2 border-b-2 transition-colors ${
+            pathname === '/map' ? 'border-cyan text-cyan' : 'border-transparent text-gray-500 hover:text-foreground'
+          }`}
+        >
+          <MapIcon className="w-4 h-4" />
+          <span className="font-medium">Live Map</span>
+        </Link>
+        <Link 
+          href="/reports" 
+          className={`flex items-center gap-2 h-full px-2 border-b-2 transition-colors ${
+            pathname === '/reports' ? 'border-cyan text-cyan' : 'border-transparent text-gray-500 hover:text-foreground'
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          <span className="font-medium">Reports</span>
+        </Link>
+      </div>
+
+      {/* Right: User & Actions */}
+      <div className="flex items-center gap-4">
+        {mounted && (
+          <button 
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="w-9 h-9 rounded-full flex items-center justify-center transition-colors"
+            style={{ backgroundColor: 'var(--icon-bg)', border: '1px solid var(--panel-border)' }}
+          >
+            {theme === 'dark' ? <Sun className="w-4 h-4" style={{ color: 'var(--text-muted)' }} /> : <Moon className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />}
+          </button>
+        )}
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-panel border border-panelBorder hover:border-gray-400 dark:hover:border-gray-600 cursor-pointer transition-colors">
+          <div className="w-6 h-6 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center overflow-hidden">
+            <User className="w-4 h-4 text-gray-500 dark:text-gray-300" />
+          </div>
+          <ChevronDown className="w-4 h-4 text-gray-400" />
+        </div>
+        <button className="w-9 h-9 rounded-full bg-panel border border-panelBorder flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors">
+          <Search className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+        </button>
       </div>
     </nav>
   );

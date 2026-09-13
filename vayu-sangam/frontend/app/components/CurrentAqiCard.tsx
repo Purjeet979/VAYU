@@ -27,19 +27,19 @@ export default function CurrentAqiCard() {
 
   return (
     <section className="w-full max-w-md mx-auto px-6 mb-24">
-      <div className="bg-[#131821] rounded-2xl border border-gray-800 p-6 flex items-center justify-between shadow-xl">
+      <div className="rounded-2xl border p-6 flex items-center justify-between shadow-xl" style={{ backgroundColor: 'var(--panel)', borderColor: 'var(--panel-border)' }}>
         <div>
-          <p className="text-sm text-gray-400 font-medium mb-1">Current Delhi NCR AQI</p>
+          <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Current Delhi NCR AQI</p>
           {loading ? (
-            <div className="h-10 w-24 bg-gray-800 rounded animate-pulse" />
+            <div className="h-10 w-24 rounded animate-pulse" style={{ backgroundColor: 'var(--btn-bg)' }} />
           ) : (
-            <h2 className={`text-4xl font-bold ${currentAQI ? aqiColor(currentAQI) : 'text-gray-500'}`}>
+            <h2 className={`text-4xl font-bold ${currentAQI ? aqiColor(currentAQI) : ''}`} style={!currentAQI ? { color: 'var(--text-muted)' } : {}}>
               {currentAQI ?? '-'}
             </h2>
           )}
         </div>
-        <div className="w-12 h-12 rounded-full bg-gray-800 flex items-center justify-center">
-          <Wind className="w-6 h-6 text-gray-400" />
+        <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--icon-bg)' }}>
+          <Wind className="w-6 h-6" style={{ color: 'var(--text-muted)' }} />
         </div>
       </div>
     </section>

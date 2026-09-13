@@ -275,6 +275,17 @@ def build_explanation(hour: int) -> dict[str, Any]:
     }
 
 
+def get_unified_explanation(hour: int) -> dict[str, Any]:
+    try:
+        from . import ml_explainer
+        res = ml_explainer.explain_hour(hour)
+        if res is not None:
+            return res
+    except Exception:
+        pass
+    return build_explanation(hour)
+
+
 @lru_cache(maxsize=16)
 def cached_dashboard_summary(hours: int = 72, hour: int = 24) -> dict[str, Any]:
     """Bundle dashboard data into one response to reduce frontend round-trips."""
@@ -282,7 +293,7 @@ def cached_dashboard_summary(hours: int = 72, hour: int = 24) -> dict[str, Any]:
         "forecast": cached_forecast(hours),
         "inversion": cached_inversion(hour),
         "sources": cached_sources(hour),
-        "explanation": build_explanation(hour),
+        "explanation": get_unified_explanation(hour),
     }
 
 
