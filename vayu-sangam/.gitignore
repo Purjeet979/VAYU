@@ -18,3 +18,12 @@ backend/data/live/*
 !backend/data/live/.gitkeep
 backend/data/cache/*
 !backend/data/cache/.gitkeep
+
+# Scratch and Test Scripts
+scratch/
+scripts/
+fetch_*.py
+test_*.js
+test_*.py
+process_*.py
+openaq_*.json

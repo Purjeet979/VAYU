@@ -76,6 +76,12 @@ GRID_VARIABLES = {
 }
 
 
+
+def _clamp(val: float | None) -> float | None:
+    # pollutant concentrations cannot be negative; clamps interpolation/demo-noise overshoot.
+    if val is None or np.isnan(val): return None
+    return max(0.0, float(val))
+
 def _aqi(pm25: float, pm10: float, o3: float) -> int:
     subindices = compute_sub_indices(pm25, pm10, o3)
     return int(np.ceil(max(subindices.pm25, subindices.pm10, subindices.o3)))
@@ -110,6 +116,9 @@ def cached_forecast(hours: int, stubble_fraction: float = 1.0) -> dict[str, Any]
     model = get_demo_forecast_model()
     rows = model.summary({"stubble_fraction": stubble_fraction}, horizon=hours)
     for row in rows:
+        for pol in ["pm25_ug_m3", "pm10_ug_m3", "o3_ug_m3", "nox_ug_m3", "so2_ug_m3", "co_mg_m3", "no2_ug_m3"]:
+            if pol in row and row[pol] is not None:
+                row[pol] = _clamp(row[pol])
         row["aqi"] = _aqi(row["pm25_ug_m3"], row["pm10_ug_m3"], row["o3_ug_m3"])
         for k, v in row.items():
             if isinstance(v, float) and np.isnan(v): row[k] = None
@@ -147,7 +156,7 @@ def cached_grid(hour: int, variable: str, stubble_fraction: float = 1.0) -> dict
         "stubble_fraction": stubble_fraction,
         "lat": [round(float(value), 5) for value in field.lat.values],
         "lon": [round(float(value), 5) for value in field.lon.values],
-        "values": [[None if np.isnan(v) else v for v in row] for row in np.round(field.values, 3).tolist()],
+        "values": [[None if np.isnan(v) else (_clamp(v) if variable not in ['pblh', 't2', 'rh'] else v) for v in row] for row in np.round(field.values, 3).tolist()],
     }
 
 
@@ -293,3 +302,141 @@ def cached_map_data(hour: int = 24, variable: str = "pm25") -> dict[str, Any]:
         "sources": cached_sources(hour),
         "grid": cached_grid(hour, variable),
     }
+
+
+def get_data_confidence(path) -> str:
+    try:
+        from pathlib import Path
+        project_root = Path(__file__).resolve().parents[2]
+        data_dir = project_root / "backend" / "data"
+        live_dir = data_dir / "live"
+        cache_dir = data_dir / "cache"
+        
+        # Explicitly check all inputs
+        inputs = [
+            ("weather", ".nc"), ("fires", ".csv"), ("hcho_hotspots", ".geojson"), 
+            ("cpcb", ".csv"), ("forecast", ".nc"), ("aod", ".nc"), ("no2_satellite", ".nc")
+        ]
+        parents = []
+        for base, ext in inputs:
+            if (live_dir / f"{base}_live{ext}").exists() or (live_dir / f"{base}{ext}").exists():
+                parents.append("live")
+            elif (cache_dir / f"{base}_cache{ext}").exists() or (cache_dir / f"{base}{ext}").exists():
+                parents.append("cache")
+            else:
+                parents.append("demo")
+                
+        if "demo" in parents: return "Low (demo data)"
+        if "cache" in parents: return "Medium (cached data)"
+        return "High (live data)"
+    except Exception:
+        return "Low (demo data)"
+        if "cache" in parents: return "Medium (cached data)"
+        return "High (live data)"
+    except Exception:
+        return "Low (demo data)"
+
+
+import xarray as xr
+
+@lru_cache(maxsize=1)
+def cached_station_forecasts():
+    stations = [s for s in cached_cpcb_latest() if s.get("lat") and s.get("lon")]
+    model = get_demo_forecast_model()
+    ds = model.predict(horizon=72)
+    
+    if not stations:
+        return []
+        
+    station_lat = xr.DataArray([s["lat"] for s in stations], dims="station")
+    station_lon = xr.DataArray([s["lon"] for s in stations], dims="station")
+    
+    linear_ds = ds.interp(lat=station_lat, lon=station_lon, method="linear")
+    nearest_ds = ds.interp(lat=station_lat, lon=station_lon, method="nearest")
+    interp_ds = linear_ds.combine_first(nearest_ds)
+    
+    results = []
+    for i, s in enumerate(stations):
+        station_id = s.get("station_id")
+        station_name = s.get("station_name")
+        forecast = []
+        for h in range(72):
+            frame = interp_ds.isel(time=h, station=i)
+            # handle NaN if outside grid
+            pm25 = _clamp(float(frame.pm25.item())) if not np.isnan(frame.pm25.item()) else 0
+            pm10 = _clamp(float(frame.pm10.item())) if not np.isnan(frame.pm10.item()) else 0
+            o3 = _clamp(float(frame.o3.item())) if not np.isnan(frame.o3.item()) else 0
+            
+            forecast.append({
+                "hour": h,
+                "timestamp": pd.Timestamp(frame.time.values).isoformat(),
+                "pm25": pm25,
+                "pm10": pm10,
+                "o3": o3,
+                "aqi": _aqi(pm25, pm10, o3)
+            })
+        results.append({
+            "station_id": station_id,
+            "station_name": station_name,
+            "lat": s["lat"],
+            "lon": s["lon"],
+            "forecast": forecast,
+            "scientific_status": "spatial interpolation of existing grid, not a new prediction"
+        })
+    return results
+
+def get_dominant_drivers(hour: int):
+    inversion = cached_inversion(hour)
+    sources = cached_sources(hour)
+    forecast = cached_forecast(hour + 1)["forecast"][hour]
+    
+    drivers = []
+    if float(forecast["pbl_height_m"]) < 500:
+        drivers.append(f"Low boundary layer height ({forecast['pbl_height_m']} m) trapping pollutants")
+    if float(forecast["wind_speed_mps"]) < 2.0:
+        drivers.append(f"Weak winds ({forecast['wind_speed_mps']} m/s) limiting dispersion")
+        
+    for cluster in sources.get("sources", []):
+        if cluster.get("wind_alignment_score", 0) > 0.7 and cluster.get("stubble_intensity_score", 0) > 0.5:
+            drivers.append(f"Incoming plume from stubble-burning cluster near {cluster.get('distance_to_delhi_km', 'unknown')}km away")
+            break
+            
+    if inversion.get("category", "").lower() in ["strong", "severe"]:
+        drivers.append("Strong temperature inversion detected")
+        
+    return drivers
+
+def get_early_warnings():
+    forecast = cached_forecast(72)["forecast"]
+    alerts = []
+    in_alert = False
+    start_time = None
+    peak_aqi = 0
+    
+    for row in forecast:
+        aqi = row.get("aqi")
+        if aqi is None: continue
+        is_severe = aqi > 400
+        if is_severe and not in_alert:
+            in_alert = True
+            start_time = row["timestamp"]
+            peak_aqi = aqi
+        elif is_severe and in_alert:
+            peak_aqi = max(peak_aqi, aqi)
+        elif not is_severe and in_alert:
+            in_alert = False
+            alerts.append({
+                "start_time": start_time,
+                "end_time": row["timestamp"],
+                "predicted_aqi_range": f"400-{peak_aqi}",
+                "severity_label": "Severe"
+            })
+            
+    if in_alert:
+        alerts.append({
+            "start_time": start_time,
+            "end_time": forecast[-1]["timestamp"],
+            "predicted_aqi_range": f"400-{peak_aqi}",
+            "severity_label": "Severe"
+        })
+    return alerts

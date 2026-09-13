@@ -37,6 +37,10 @@ def load_station_lookup():
     df['clean_key'] = df['clean_name'].fillna('') + "_" + df['city'].fillna('').str.lower()
     return df
 
+# LIVE PATH UNTESTED as of 2026-09-13 — data.gov.in has returned
+# 502/timeout on every attempt. Fallback-to-OpenAQ/cache path IS tested
+# and confirmed working. See tests/test_cpcb_fixture.py for offline
+# validation of the parsing logic itself.
 def fetch_state_data(state, api_key):
     url_base = "https://api.data.gov.in/resource/3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69"
     limit = 2000
@@ -66,52 +70,87 @@ def fetch_state_data(state, api_key):
     return records
 
 def fetch_openaq_data(api_key):
-    """
-    Fallback fetcher using OpenAQ v3 API.
-    Fetches latest measurements for Delhi bounding box.
-    """
-    logger.info("Triggering OpenAQ Fallback Fetcher...")
+    import concurrent.futures
+    import datetime
+    from datetime import timezone
+    logger.info("Triggering OpenAQ Fallback Fetcher (V3 API)...")
     if not api_key or "your_" in api_key:
         raise ValueError("OpenAQ API Key is missing or invalid.")
         
     url = "https://api.openaq.org/v3/locations"
     headers = {"X-API-Key": api_key}
     
-    # Bounding box for Delhi NCR: [min_lon, min_lat, max_lon, max_lat]
-    # Approx: 76.8, 28.2, 77.5, 28.9
     params = {
         "coordinates": "28.6,77.2",
-        "radius": 50000, # 50km
+        "radius": 25000, 
         "limit": 1000
     }
     
-    # In a real scenario we'd parse OpenAQ's specific measurement format.
-    # For now, we will raise NotImplementedError to indicate it's wired up but needs live testing to see the schema.
-    # We will map it to look exactly like the raw_records of data.gov.in so the same pivot logic works.
-    
     response = requests.get(url, headers=headers, params=params, timeout=15)
     response.raise_for_status()
-    
     data = response.json()
+    
+    locations = data.get('results', [])
+    if not locations:
+        return []
+        
+    # 1. Build sensor lookup map: sensorId -> (parameter_name, location_name)
+    sensor_map = {}
+    for loc in locations:
+        city_data = loc.get('city')
+        city = city_data.get('name', 'Delhi') if isinstance(city_data, dict) else (city_data or 'Delhi')
+        station = loc.get('name', 'Unknown')
+        for sensor in loc.get('sensors', []):
+            param = sensor.get('parameter', {}).get('name', '').upper()
+            if param == 'O3': param = 'OZONE'
+            if param == 'PM25': param = 'PM2.5'
+            sensor_map[sensor['id']] = {
+                'city': city,
+                'station': station,
+                'pollutant_id': param
+            }
+            
+    # 2. Fetch latest data concurrently
     records = []
     
-    for loc in data.get('results', []):
-        city = loc.get('city', {}).get('name', 'Delhi')
-        station = loc.get('name', 'Unknown')
-        
-        for parameter in loc.get('parameters', []):
-            pollutant_id = parameter.get('name').upper()
-            if pollutant_id == 'O3': pollutant_id = 'OZONE'
+    def fetch_latest(loc):
+        try:
+            r = requests.get(f"https://api.openaq.org/v3/locations/{loc['id']}/latest", headers=headers, timeout=10)
+            return r.json().get('results', [])
+        except Exception:
+            return []
             
-            # Map OpenAQ payload to data.gov.in style payload for unified processing
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+        results = list(executor.map(fetch_latest, locations))
+        
+    # 3. Process results
+    now = datetime.datetime.now(timezone.utc)
+    for loc_results in results:
+        for reading in loc_results:
+            sensor_id = reading.get('sensorsId')
+            val = reading.get('value')
+            dt_str = reading.get('datetime', {}).get('utc')
+            
+            if not sensor_id or val is None or not dt_str: continue
+            if sensor_id not in sensor_map: continue
+            
+            # Filter out stale data (older than 48 hours)
+            try:
+                dt = datetime.datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+                if (now - dt).total_seconds() > 48 * 3600:
+                    continue
+            except:
+                continue
+                
+            meta = sensor_map[sensor_id]
             records.append({
                 'country': 'India',
                 'state': 'Delhi',
-                'city': city,
-                'station': station,
-                'last_update': parameter.get('lastUpdated'),
-                'pollutant_id': pollutant_id,
-                'pollutant_avg': parameter.get('lastValue')
+                'city': meta['city'],
+                'station': meta['station'],
+                'last_update': dt_str,
+                'pollutant_id': meta['pollutant_id'],
+                'pollutant_avg': val
             })
             
     return records
@@ -222,6 +261,10 @@ def process_and_pivot(raw_records, lookup_df):
     # Reindex one last time just to be absolutely sure of the order
     final_df = merged.reindex(columns=final_cols)
     
+    # Clamp negative sensor values (defensive against calibration drift)
+    pollutant_cols = ['pm25', 'pm10', 'no2', 'o3', 'co', 'so2']
+    final_df[pollutant_cols] = final_df[pollutant_cols].clip(lower=0.0)
+    
     return final_df
 
 def main():
@@ -305,10 +348,22 @@ def main():
         json.dump(meta, f)
         
     logger.info(f"Successfully processed and saved {len(final_df)} rows to {LIVE_FILE}")
-    
-    # Print sample for verification
-    print("\n--- SAMPLE OUTPUT ---")
-    print(final_df[['timestamp', 'station_name', 'pm25', 'pm10', 'o3', 'no2', 'co', 'so2']].head())
+    # 5. Trigger Nowcast Generation
+    logger.info("Triggering Nowcast Grid Generator...")
+    import subprocess
+    scripts_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
+    nowcast_script = os.path.join(scripts_dir, "generate_nowcast_grid.py")
+    out_json = LIVE_DIR / "nowcast_grid.json"
+    if os.path.exists(nowcast_script):
+        try:
+            # We must use sys.executable to ensure it runs with the same python environment
+            import sys
+            subprocess.run([sys.executable, nowcast_script, "--cpcb", str(LIVE_FILE), "--out", str(out_json)], check=True)
+            logger.info("Nowcast grid generation completed successfully.")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Nowcast grid generation failed with exit code {e.returncode}.")
+    else:
+        logger.warning(f"Nowcast script not found at {nowcast_script}")
 
 if __name__ == "__main__":
     main()

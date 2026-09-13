@@ -35,16 +35,32 @@ def read_root():
     return {"message": "Welcome to VayuSangam-AI Backend API", "docs": "/docs"}
 
 
+@app.get("/api/data_confidence")
+def get_data_confidence_api():
+    """Return the current data confidence string."""
+    from .api_service import get_data_confidence
+    return {"data_confidence": get_data_confidence(None)}
+
+
 @app.get("/api/health")
 def get_health():
     """Validate that all bundled demo engines and assets are loadable."""
     try:
+        from .api_service import get_data_confidence
+        confidence = get_data_confidence(None)
+        if "live" in confidence.lower():
+            actual_mode = "live"
+        elif "cache" in confidence.lower():
+            actual_mode = "cached"
+        else:
+            actual_mode = "demo"
+
         model = get_demo_forecast_model()
         cached_sources(0)
         cached_inversion(0)
         return {
             "status": "ok",
-            "mode": DATA_MODE,
+            "mode": actual_mode,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "services": {
                 "forecast": {"status": "ok", "model": model.model_name, "hours": model.max_horizon},
@@ -184,3 +200,27 @@ def run_scenario(request: ScenarioRequest):
 def get_explanation(hour: int = Query(default=24, ge=0, le=72, description="Forecast hour")):
     """Return explainable prototype evidence for the selected forecast hour."""
     return build_explanation(hour)
+
+
+@app.get("/api/nowcast")
+def get_nowcast():
+    """Return the live interpolated nowcast grid from real station data."""
+    import json
+    from pathlib import Path
+    project_root = Path(__file__).resolve().parents[2]
+    nowcast_path = project_root / "backend" / "data" / "live" / "nowcast_grid.json"
+    meta_path = project_root / "backend" / "data" / "live" / "nowcast_grid.meta.json"
+    
+    if not nowcast_path.exists() or not meta_path.exists():
+        raise HTTPException(status_code=503, detail="Nowcast grid not yet generated or available.")
+        
+    try:
+        with open(nowcast_path, "r") as f:
+            grid_data = json.load(f)
+        with open(meta_path, "r") as f:
+            meta_data = json.load(f)
+            
+        grid_data["meta"] = meta_data
+        return grid_data
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error)) from error

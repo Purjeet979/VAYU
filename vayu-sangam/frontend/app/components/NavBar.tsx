@@ -8,10 +8,16 @@ export default function NavBar() {
   const [mode, setMode] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/api/health', { cache: 'no-store' })
+    fetch('/api/nowcast', { cache: 'no-store' })
       .then(res => res.json())
-      .then(data => setMode(data.mode ?? 'unknown'))
-      .catch(() => setMode('unknown'));
+      .then(data => {
+        if (data?.meta?.is_live) {
+          setMode('live');
+        } else {
+          setMode('demo');
+        }
+      })
+      .catch(() => setMode('demo')); // Fallback to demo
   }, []);
 
   return (
@@ -23,8 +29,8 @@ export default function NavBar() {
         </Link>
         {mode && (
           <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-gray-900 border border-gray-700 text-xs font-medium text-gray-300">
-            <span className={`w-2 h-2 rounded-full ${mode === 'live' ? 'bg-green-500 animate-pulse' : mode === 'demo' ? 'bg-orange-500' : 'bg-gray-500'}`} />
-            <span className="capitalize">{mode}</span>
+            <span className={`w-2 h-2 rounded-full ${mode === 'live' ? 'bg-green-500 animate-pulse' : mode === 'cached' ? 'bg-yellow-500' : 'bg-gray-500'}`} />
+            <span className="capitalize">{mode === 'demo' ? 'Demo Data' : mode === 'cached' ? 'Cached Data' : mode}</span>
           </div>
         )}
       </div>

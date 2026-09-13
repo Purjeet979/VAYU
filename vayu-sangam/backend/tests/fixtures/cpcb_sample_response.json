@@ -1,0 +1,60 @@
+{
+  "records": [
+    {
+      "country": "India",
+      "state": "Delhi",
+      "city": "Delhi",
+      "station": "Anand Vihar, Delhi - DPCC",
+      "last_update": "13-09-2026 10:00:00",
+      "pollutant_id": "PM2.5",
+      "pollutant_min": "100",
+      "pollutant_max": "150",
+      "pollutant_avg": "125"
+    },
+    {
+      "country": "India",
+      "state": "Delhi",
+      "city": "Delhi",
+      "station": "Anand Vihar, Delhi - DPCC",
+      "last_update": "13-09-2026 10:00:00",
+      "pollutant_id": "OZONE",
+      "pollutant_min": "10",
+      "pollutant_max": "30",
+      "pollutant_avg": "20"
+    },
+    {
+      "country": "India",
+      "state": "Delhi",
+      "city": "Delhi",
+      "station": "  dwarka-sector 8, delhi - DPCC ",
+      "last_update": "09-11-2026 10:00:00",
+      "pollutant_id": "PM10",
+      "pollutant_min": "200",
+      "pollutant_max": "250",
+      "pollutant_avg": "220"
+    },
+    {
+      "country": "India",
+      "state": "Delhi",
+      "city": "Delhi",
+      "station": "Unknown Station Name Not In CSV",
+      "last_update": "13-09-2026 10:00:00",
+      "pollutant_id": "NO2",
+      "pollutant_min": "40",
+      "pollutant_max": "60",
+      "pollutant_avg": "50"
+    },
+    {
+      "country": "India",
+      "state": "Delhi",
+      "city": "Delhi",
+      "station": "Anand Vihar, Delhi - DPCC",
+      "last_update": "13-09-2026 10:00:00",
+      "pollutant_id": "NH3",
+      "pollutant_min": "10",
+      "pollutant_max": "20",
+      "pollutant_avg": "15"
+    }
+  ],
+  "total": 5
+}

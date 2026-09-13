@@ -222,6 +222,23 @@ class SourceIntelligenceService:
                 )
 
         max_frp = max((cluster["frp_sum"] for cluster in clusters), default=1.0)
+        if max_frp <= 0.0: max_frp = 1.0
+        weights = self.config.get("score_weights", {})
+        for cluster in clusters:
+            lat, lon = cluster["centroid"]["lat"], cluster["centroid"]["lon"]
+            distance_km = haversine_km(lat, lon, DELHI_NCR["lat"], DELHI_NCR["lon"])
+            bearing = bearing_to_deg(lat, lon, DELHI_NCR["lat"], DELHI_NCR["lon"])
+            u_wind, v_wind = self._wind_at(hour, lat, lon)
+            speed_mps = math.hypot(u_wind, v_wind)
+            wind_direction = wind_to_direction_deg(u_wind, v_wind)
+            alignment = wind_alignment_score(wind_direction, bearing)
+            safe_speed_mps = max(speed_mps, float(self.config.get("minimum_wind_speed_mps", 0.5)))
+            travel_hours = distance_km / (safe_speed_mps * 3.6)
+            uncertainty_fraction = float(self.config.get("travel_time_uncertainty_fraction", 0.30))
+            proximity_scale_km = float(self.config.get("proximity_scale_km", 250))
+
+        max_frp = max((cluster["frp_sum"] for cluster in clusters), default=1.0)
+        if max_frp <= 0.0: max_frp = 1.0
         weights = self.config.get("score_weights", {})
         for cluster in clusters:
             lat, lon = cluster["centroid"]["lat"], cluster["centroid"]["lon"]
@@ -273,6 +290,7 @@ class SourceIntelligenceService:
                         "proximity": round(proximity_score, 3),
                         "agricultural_land": round(agricultural_score, 3),
                     },
+                    "stubble_intensity_score": round(normalized_frp, 3),
                     "source_score": round(source_score, 3),
                     "scientific_status": "prototype heuristic; not scientifically calibrated",
                 }
@@ -294,6 +312,35 @@ class SourceIntelligenceService:
             "noise_fire_count": noise_count,
             "sources": clusters,
         }
+
+    def get_hcho_hotspots_with_attribution(self, hour: int = 24) -> list[dict[str, Any]]:
+        clusters = self.get_sources(0).get("sources", []) # Fix: Always use hour=0 for attribution
+        attributed = []
+        for hotspot in self.hcho_hotspots:
+            lat = hotspot["lat"]
+            lon = hotspot["lon"]
+            
+            likely_source = "uncertain"
+            for cluster in clusters:
+                c_lat = cluster["centroid"]["lat"]
+                c_lon = cluster["centroid"]["lon"]
+                dist = haversine_km(lat, lon, c_lat, c_lon)
+                
+                if dist <= 50:
+                    bearing_from_cluster = bearing_to_deg(c_lat, c_lon, lat, lon)
+                    u, v = self._wind_at(0, c_lat, c_lon) # Fix: use hour=0 wind for past/present attribution
+                    wind_dir = wind_to_direction_deg(u, v)
+                    
+                    if angular_difference_deg(wind_dir, bearing_from_cluster) <= 30:
+                        likely_source = "biomass_burning"
+                        break
+            
+            attributed.append({
+                **hotspot,
+                "likely_source": likely_source,
+                "scientific_status": "prototype spatial-wind heuristic; not ML-attributed"
+            })
+        return attributed
 
 
 @lru_cache(maxsize=1)

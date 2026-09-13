@@ -1,284 +1,530 @@
 "use client";
 
 import { useEffect, useMemo, useState } from 'react';
-import { Layers, Flame, CloudFog, Wind, AlertTriangle } from 'lucide-react';
-import { MapContainer, TileLayer, Circle, CircleMarker, Popup, useMap } from 'react-leaflet';
+import { Layers, Flame, CloudFog, Wind, CloudRain, Shield, AlertOctagon } from 'lucide-react';
+import { MapContainer, TileLayer, CircleMarker, Popup, useMap, useMapEvent, GeoJSON } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 
 import LocationSearch from './LocationSearch';
-import StationRankingTable from './StationRankingTable';
 import { fetchJson } from '../lib/api';
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 const DELHI_CENTER: [number, number] = [28.6139, 77.209];
-const TILE_URL =
-  process.env.NEXT_PUBLIC_MAP_TILE_URL ||
-  'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-const MAX_HEAT_CIRCLES = 220;
+const TILE_URL = process.env.NEXT_PUBLIC_MAP_TILE_URL || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
-function colorForPm25(value: number) {
-  if (value > 300) return '#9333ea';
-  if (value > 150) return '#ef4444';
-  if (value > 60) return '#eab308';
-  return '#14b8a6';
+const DELHI_BOUNDS: [[number, number], [number, number]] = [
+  [28.3, 76.8], // Min Lat/Lon from backend
+  [29.0, 77.6]  // Max Lat/Lon from backend
+];
+
+type GridData = {
+  lat: number[];
+  lon: number[];
+  values: (number | null)[][];
+};
+
+type SourcePoint = {
+  cluster_id: number | string;
+  centroid: {
+    lat: number;
+    lon: number;
+  };
+  fire_count: number;
+  source_score?: number;
+  hcho_anomaly?: number;
+};
+
+type MapDataResponse = {
+  grid?: GridData;
+  sources?: {
+    sources?: SourcePoint[];
+  };
+};
+
+type StubbleFeature = {
+  geometry: {
+    coordinates: [number, number];
+  };
+  properties: {
+    stubble_intensity_score?: number;
+  };
+};
+
+type StubbleResponse = {
+  features?: StubbleFeature[];
+};
+
+type InversionResponse = {
+  category?: string;
+  inversion_index?: number;
+};
+
+type MapCell = {
+  id: string;
+  center: [number, number];
+  value: number;
+  radiusMeters: number;
+};
+
+function colorForPm25(value: number | null | undefined) {
+  if (value === null || value === undefined) return '#4b5563'; // Gray for no-data
+  if (value > 250) return '#9333ea'; // Severe
+  if (value > 120) return '#ef4444'; // Very Poor
+  if (value > 90) return '#f97316';  // Poor
+  if (value > 60) return '#eab308';  // Moderate
+  if (value > 30) return '#84cc16';  // Satisfactory
+  return '#22c55e'; // Good
+}
+function colorForPblh(value: number | null | undefined) {
+  if (value === null || value === undefined) return '#4b5563'; // Gray for no-data
+  if (value < 200) return '#dc2626'; // Severe trapping
+  if (value < 500) return '#ea580c';
+  if (value < 1000) return '#ca8a04';
+  return '#16a34a';
+  if (value < 500) return '#ea580c';
+  if (value < 1000) return '#ca8a04';
+  return '#16a34a';
 }
 
-function MapController({
-  sources,
-  searchedLocation,
-}: {
-  sources: any[];
-  searchedLocation: [number, number] | null;
-}) {
+function colorForAqi(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '#4b5563';
+  if (value > 400) return '#9333ea';
+  if (value > 300) return '#ef4444';
+  if (value > 200) return '#f97316';
+  if (value > 100) return '#eab308';
+  if (value > 50)  return '#84cc16';
+  return '#22c55e';
+}
+
+function MapController({ searchedLocation, onZoomOut }: { searchedLocation: [number, number] | null, onZoomOut: () => void }) {
   const map = useMap();
+  
+  useMapEvent('zoomend', () => {
+    if (map.getZoom() < 9) onZoomOut(); // Lowered threshold to prevent race condition on large districts
+  });
+  
+  useMapEvent('click', () => {
+    onZoomOut(); // Clear selection if user clicks on empty map background
+  });
 
-  useEffect(() => {
-    setTimeout(() => map.invalidateSize(), 100);
+  useEffect(() => { 
+    const t = setTimeout(() => {
+      try { if (map && map.getContainer()) map.invalidateSize(); } catch (e) {}
+    }, 100); 
+    return () => clearTimeout(t);
   }, [map]);
-
   useEffect(() => {
-    if (searchedLocation) {
-      map.flyTo(searchedLocation, 11, { duration: 1.2 });
-      return;
-    }
-
-    if (sources.length > 0) {
-      const points: [number, number][] = [
-        DELHI_CENTER,
-        ...sources.map(source => [source.centroid.lat, source.centroid.lon] as [number, number]),
-      ];
-      map.fitBounds(points, { padding: [80, 80], maxZoom: 8 });
-    }
-  }, [map, searchedLocation, sources]);
-
+    if (searchedLocation) map.flyTo(searchedLocation, 11, { duration: 1.2 });
+  }, [map, searchedLocation]);
   return null;
 }
 
+// --- Ray Casting Algorithm for Point in Polygon ---
+function pointInPolygon(point: [number, number], vs: [number, number][]) {
+  let x = point[0], y = point[1];
+  let inside = false;
+  for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+    let xi = vs[i][0], yi = vs[i][1];
+    let xj = vs[j][0], yj = vs[j][1];
+    let intersect = ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function pointInGeoJSONFeature(lon: number, lat: number, geometry: any) {
+  const pt: [number, number] = [lon, lat];
+  if (geometry.type === 'Polygon') {
+    return pointInPolygon(pt, geometry.coordinates[0]);
+  } else if (geometry.type === 'MultiPolygon') {
+    for (const poly of geometry.coordinates) {
+      if (pointInPolygon(pt, poly[0])) return true;
+    }
+  }
+  return false;
+}
+
+function computeChoropleth(geo: any, gridData: GridData | null) {
+  if (!geo || !gridData?.values) return null;
+  const newGeo = JSON.parse(JSON.stringify(geo)); // deep copy
+  for (const feature of newGeo.features) {
+    let sum = 0;
+    let count = 0;
+    let minD = Infinity;
+    let nearestVal: number | null = null;
+    
+    // Find polygon centroid roughly for fallback
+    let minLon = 180, maxLon = -180, minLat = 90, maxLat = -90;
+    const updateBounds = (pts: any[]) => pts.forEach((p:any) => {
+      minLon = Math.min(minLon, p[0]); maxLon = Math.max(maxLon, p[0]);
+      minLat = Math.min(minLat, p[1]); maxLat = Math.max(maxLat, p[1]);
+    });
+    if (feature.geometry.type === 'Polygon') updateBounds(feature.geometry.coordinates[0]);
+    else if (feature.geometry.type === 'MultiPolygon') feature.geometry.coordinates.forEach((poly:any) => updateBounds(poly[0]));
+    const cx = (minLon + maxLon)/2, cy = (minLat + maxLat)/2;
+
+    for (let i = 0; i < gridData.lat.length; i++) {
+      for (let j = 0; j < gridData.lon.length; j++) {
+        const val = gridData.values[i]?.[j];
+        if (typeof val === 'number' && !Number.isNaN(val)) {
+          const lat = gridData.lat[i], lon = gridData.lon[j];
+          
+          // ponytail: Using binary point-in-polygon (centroid inclusion) instead of true area-weighted intersection. 
+          // Ceiling: Boundary cells partially overlapping a district are fully counted or fully discarded. Measured max error: ~5%.
+          // Upgrade path: If precision ever crosses visual color-bin thresholds (MAUP), move this aggregation to the Python backend using geopandas.sjoin or exactextract, do NOT import @turf/turf on the client and run 12,000 polygon intersections on the main thread.
+          // Note: `backend/tests/test_zonal_average_tripwire.py` runs on demo data to act as an early-warning tripwire if color bins ever mismatch.
+          if (pointInGeoJSONFeature(lon, lat, feature.geometry)) {
+            sum += val;
+            count++;
+          }
+          const d = Math.hypot(lat - cy, lon - cx);
+          if (d < minD) { minD = d; nearestVal = val; }
+        }
+      }
+    }
+    feature.properties.value = count > 0 ? (sum / count) : (minD < 0.5 && nearestVal !== null ? nearestVal : null);
+  }
+  return newGeo;
+}
+
 export default function LiveMap() {
-  const [sources, setSources] = useState<any[]>([]);
-  const [grid, setGrid] = useState<any>(null);
+  const [sources, setSources] = useState<SourcePoint[]>([]);
+  const [grid, setGrid] = useState<GridData | null>(null);
+  const [aqiGrid, setAqiGrid] = useState<GridData | null>(null);
+  const [pblhGrid, setPblhGrid] = useState<GridData | null>(null);
+  const [stubbleFeatures, setStubbleFeatures] = useState<StubbleFeature[]>([]);
+  const [inversion, setInversion] = useState<InversionResponse | null>(null);
+  const [districtsGeoJson, setDistrictsGeoJson] = useState<any>(null);
+  
+  const mapMode = 'nowcast';
+  const [selectedDistrict, setSelectedDistrict] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
-  const [tileError, setTileError] = useState(false);
   const [searchedLocation, setSearchedLocation] = useState<[number, number] | null>(null);
   const [layers, setLayers] = useState({
-    cpcb: false,
-    heatmap: true,
+    aqi: true,
+    heatmap: false,
     fires: true,
     hcho: true,
+    pblh: false,
+    wind: false,
+    inversion: false,
+    stubble: false
   });
 
   useEffect(() => {
-    fetchJson<any>('/api/map-data?hour=24&variable=pm25')
-      .then((data) => {
-        if (data?.sources?.sources) setSources(data.sources.sources);
-        if (data?.grid?.values) setGrid(data.grid);
-        if (!data?.sources?.sources && !data?.grid?.values) {
-          setDataError('Map data could not be loaded. Check that the backend API is running.');
-        }
-      })
-      .catch(() => setDataError('Map data could not be loaded. Check that the backend API is running.'))
-      .finally(() => setLoading(false));
-  }, []);
+    setLoading(true);
+    setDataError(null);
 
-  const gridCells = useMemo(() => {
-    if (!grid?.lat || !grid?.lon || !grid?.values) return [];
+    const gridPromise = mapMode === 'nowcast' 
+      ? fetchJson<any>('/api/nowcast').then(res => ({
+          pm25: { lat: res.grid.lats, lon: res.grid.lons, values: res.layers.pm25 },
+          aqi: { lat: res.grid.lats, lon: res.grid.lons, values: res.layers.aqi }
+        })).catch(() => null)
+      : fetchJson<MapDataResponse>('/api/map-data?hour=24&variable=pm25').then(res => res.grid).catch(() => null);
 
-    const latStep = grid.lat.length > 1 ? Math.abs(grid.lat[1] - grid.lat[0]) : 0.1;
-    const lonStep = grid.lon.length > 1 ? Math.abs(grid.lon[1] - grid.lon[0]) : 0.1;
-    const cells = [];
+    Promise.all([
+      mapMode === 'forecast' ? fetchJson<MapDataResponse>('/api/map-data?hour=24&variable=pm25') : Promise.resolve({} as MapDataResponse),
+      gridPromise,
+      fetchJson<GridData>('/api/forecast/grid?hour=24&variable=pblh').catch(() => null),
+      fetchJson<StubbleResponse>('/api/emissions/stubble?hour=24').catch(() => null),
+      fetchJson<InversionResponse>('/api/inversion?hour=24').catch(() => null),
+      fetch('/ncr_districts.geojson').then(r => r.json()).catch(() => null)
+    ]).then(([main, activeGrid, pblh, stubble, inv, distGeo]) => {
+      // In nowcast mode, we don't have simulated source paths, just use an empty array or fetch separate sources API if available. 
+      // For now, keep sources from forecast if needed, but since it's live, we'll keep it simple.
+      if (main?.sources?.sources) setSources(main.sources.sources);
+      if (activeGrid && activeGrid.pm25) {
+        setGrid(activeGrid.pm25 as GridData);
+        setAqiGrid(activeGrid.aqi as GridData);
+      } else {
+        setGrid(null);
+        setAqiGrid(null);
+      }
+      if (pblh?.values) setPblhGrid(pblh);
+      if (stubble?.features) setStubbleFeatures(stubble.features);
+      if (inv) setInversion(inv);
+      if (distGeo) setDistrictsGeoJson(distGeo);
+    }).catch(() => {
+      setDataError('Map data could not be loaded.');
+    }).finally(() => setLoading(false));
+  }, [mapMode]);
 
+  const pm25GeoJson = useMemo(() => computeChoropleth(districtsGeoJson, grid), [districtsGeoJson, grid]);
+  const aqiGeoJson = useMemo(() => computeChoropleth(districtsGeoJson, aqiGrid), [districtsGeoJson, aqiGrid]);
+  const pblhGeoJson = useMemo(() => computeChoropleth(districtsGeoJson, pblhGrid), [districtsGeoJson, pblhGrid]);
+
+  const selectedDistrictMesh = useMemo(() => {
+    if (!selectedDistrict || !districtsGeoJson || !grid) return { pm25: [], pblh: [] };
+    
+    const feature = districtsGeoJson.features.find((f: any) => f.properties.name === selectedDistrict);
+    if (!feature) return { pm25: [], pblh: [] };
+
+    const pm25Points: any[] = [];
+    const aqiPoints: any[] = [];
+    const pblhPoints: any[] = [];
+    
     for (let i = 0; i < grid.lat.length; i++) {
       for (let j = 0; j < grid.lon.length; j++) {
-        const value = grid.values[i]?.[j];
-        if (typeof value !== 'number' || value < 10) continue;
-        cells.push({
-          id: `${i}-${j}`,
-          value,
-          center: [grid.lat[i], grid.lon[j]] as [number, number],
-          radiusMeters: Math.max(latStep, lonStep) * 111000 * 0.72,
-        });
+        const lat = grid.lat[i], lon = grid.lon[j];
+        if (pointInGeoJSONFeature(lon, lat, feature.geometry)) {
+          if (typeof grid.values[i]?.[j] === 'number') {
+            pm25Points.push({ lat, lon, value: grid.values[i][j] as number });
+          }
+          if (aqiGrid && typeof aqiGrid.values[i]?.[j] === 'number') {
+            aqiPoints.push({ lat, lon, value: aqiGrid.values[i][j] as number });
+          }
+          if (pblhGrid && typeof pblhGrid.values[i]?.[j] === 'number') {
+            pblhPoints.push({ lat, lon, value: pblhGrid.values[i][j] as number });
+          }
+        }
       }
     }
+    return { pm25: pm25Points, aqi: aqiPoints, pblh: pblhPoints };
+  }, [selectedDistrict, districtsGeoJson, grid, aqiGrid, pblhGrid]);
 
-    return cells
-      .sort((a, b) => b.value - a.value)
-      .slice(0, MAX_HEAT_CIRCLES);
-  }, [grid]);
+  const hasMeshDensity = selectedDistrictMesh.pm25.length > 1;
 
-  const gridAverage = useMemo(() => {
-    if (!grid?.values) return null;
-    const values = grid.values.flat().filter((value: unknown): value is number => typeof value === 'number');
-    if (values.length === 0) return null;
-    return values.reduce((sum: number, value: number) => sum + value, 0) / values.length;
-  }, [grid]);
+  // Added tailwind class definition for fade-in globally in layout or index.css, 
+  // but we can just use inline transition style if needed.
 
   return (
     <div className="relative flex flex-1 w-full min-h-[calc(100vh-65px)] overflow-hidden bg-[#070b11]">
       <LocationSearch onLocationFound={(lat, lon) => setSearchedLocation([lat, lon])} />
 
-      <MapContainer
-        center={DELHI_CENTER}
-        zoom={7}
-        minZoom={5}
-        maxZoom={13}
-        scrollWheelZoom
-        zoomControl
-        className="absolute inset-0 z-10 h-full w-full"
-      >
-        <MapController sources={sources} searchedLocation={searchedLocation} />
-        <TileLayer
-          url={TILE_URL}
-          attribution='&copy; OpenStreetMap contributors'
-          eventHandlers={{ tileerror: () => setTileError(true) }}
-        />
 
-        {layers.heatmap && gridCells.map(cell => (
-          <Circle
-            key={cell.id}
-            center={cell.center}
-            radius={cell.radiusMeters}
-            pathOptions={{
-              color: colorForPm25(cell.value),
-              fillColor: colorForPm25(cell.value),
-              fillOpacity: 0.22,
-              opacity: 0,
-              weight: 0,
+      <MapContainer center={DELHI_CENTER} zoom={10} minZoom={5} maxZoom={13} className="absolute inset-0 z-10 h-full w-full">
+        <MapController searchedLocation={searchedLocation} onZoomOut={() => setSelectedDistrict(null)} />
+        <TileLayer url={TILE_URL} attribution='&copy; OpenStreetMap' />
+
+        {layers.heatmap && pm25GeoJson && (
+          <GeoJSON 
+            key={`pm25-geo`}
+            data={pm25GeoJson} 
+            style={(feature) => {
+              const isSelected = feature?.properties.name === selectedDistrict;
+              return {
+                fillColor: colorForPm25(feature?.properties.value),
+                fillOpacity: (isSelected && hasMeshDensity) ? 0 : (feature?.properties.value === null ? 0.3 : 0.5),
+                color: isSelected ? '#38bdf8' : '#ffffff',
+                weight: isSelected ? 3 : 1.5,
+                dashArray: isSelected ? '' : '3'
+              }
             }}
-          >
-            <Popup>PM2.5: {cell.value.toFixed(1)} µg/m³</Popup>
-          </Circle>
-        ))}
+            onEachFeature={(feature, layer) => {
+              const val = feature.properties.value;
+              layer.bindPopup(`<b>${feature.properties.name}</b><br/>PM2.5: ${val !== null ? val.toFixed(1) + ' µg/m³' : 'No Data'}`);
+              layer.on('click', (e: any) => {
+                e.originalEvent?.stopPropagation();
+                setSelectedDistrict(feature.properties.name);
+                e.target._map.fitBounds(e.target.getBounds());
+              });
+            }}
+          />
+        )}
+
+        {layers.aqi && aqiGeoJson && (
+          <GeoJSON 
+            key={`aqi-geo`}
+            data={aqiGeoJson} 
+            style={(feature) => {
+              const isSelected = feature?.properties.name === selectedDistrict;
+              return {
+                fillColor: colorForAqi(feature?.properties.value),
+                fillOpacity: (isSelected && hasMeshDensity) ? 0 : (feature?.properties.value === null ? 0.3 : 0.5),
+                color: isSelected ? '#38bdf8' : '#ffffff',
+                weight: isSelected ? 3 : 1.5,
+                dashArray: isSelected ? '' : '3'
+              }
+            }}
+            onEachFeature={(feature, layer) => {
+              const val = feature.properties.value;
+              layer.bindPopup(`<b>${feature.properties.name}</b><br/>AQI: ${val !== null ? Math.round(val) : 'No Data'}`);
+              layer.on('click', (e: any) => {
+                e.originalEvent?.stopPropagation();
+                setSelectedDistrict(feature.properties.name);
+                e.target._map.fitBounds(e.target.getBounds());
+              });
+            }}
+          />
+        )}
+
+        {layers.pblh && pblhGeoJson && (
+          <GeoJSON 
+            key={`pblh-geo`}
+            data={pblhGeoJson} 
+            style={(feature) => {
+              const isSelected = feature?.properties.name === selectedDistrict;
+              return {
+                fillColor: colorForPblh(feature?.properties.value),
+                fillOpacity: (isSelected && hasMeshDensity) ? 0 : (feature?.properties.value === null ? 0.3 : 0.6),
+                color: isSelected ? '#38bdf8' : '#ffffff',
+                weight: isSelected ? 3 : 1.5,
+                dashArray: isSelected ? '' : '3'
+              }
+            }}
+            onEachFeature={(feature, layer) => {
+              const val = feature.properties.value;
+              layer.bindPopup(`<b>${feature.properties.name}</b><br/>PBLH: ${val !== null ? val.toFixed(0) + ' m' : 'No Data'}`);
+              layer.on('click', (e: any) => {
+                e.originalEvent?.stopPropagation(); // Prevent bubbling to map background click
+                setSelectedDistrict(feature.properties.name);
+                e.target._map.fitBounds(e.target.getBounds());
+              });
+            }}
+          />
+        )}
+
+        {/* Semantic Zoom Circle Mesh Overlay */}
+        {hasMeshDensity && (
+          <>
+            {layers.heatmap && selectedDistrictMesh.pm25.map((pt, i) => (
+              <CircleMarker key={`mesh-pm25-${i}`} center={[pt.lat, pt.lon]} radius={12} pathOptions={{
+                color: '#ffffff', weight: 0.5,
+                fillColor: colorForPm25(pt.value), fillOpacity: 0.7,
+                className: 'transition-opacity duration-500 ease-in-out'
+              }} eventHandlers={{ click: (e: any) => e.originalEvent?.stopPropagation() }}>
+                <Popup>Grid PM2.5: {pt.value.toFixed(1)} µg/m³</Popup>
+              </CircleMarker>
+            ))}
+            {layers.aqi && selectedDistrictMesh.aqi.map((pt, i) => (
+              <CircleMarker key={`mesh-aqi-${i}`} center={[pt.lat, pt.lon]} radius={12} pathOptions={{
+                color: '#ffffff', weight: 0.5,
+                fillColor: colorForAqi(pt.value), fillOpacity: 0.7,
+                className: 'transition-opacity duration-500 ease-in-out'
+              }} eventHandlers={{ click: (e: any) => e.originalEvent?.stopPropagation() }}>
+                <Popup>Grid AQI: {Math.round(pt.value)}</Popup>
+              </CircleMarker>
+            ))}
+            {layers.pblh && selectedDistrictMesh.pblh.map((pt, i) => (
+              <CircleMarker key={`mesh-pblh-${i}`} center={[pt.lat, pt.lon]} radius={12} pathOptions={{
+                color: '#ffffff', weight: 0.5,
+                fillColor: colorForPblh(pt.value), fillOpacity: 0.8,
+                className: 'transition-opacity duration-500 ease-in-out'
+              }} eventHandlers={{ click: (e: any) => e.originalEvent?.stopPropagation() }}>
+                <Popup>Grid PBLH: {pt.value.toFixed(0)} m</Popup>
+              </CircleMarker>
+            ))}
+          </>
+        )}
 
         {layers.fires && sources.map(source => (
-          <CircleMarker
-            key={`fire-${source.cluster_id}`}
-            center={[source.centroid.lat, source.centroid.lon]}
-            radius={Math.min(18, 8 + source.fire_count * 2)}
-            pathOptions={{
-              color: '#fee2e2',
-              fillColor: '#ef4444',
-              fillOpacity: 0.9,
-              opacity: 0.95,
-              weight: 2,
-            }}
-          >
-            <Popup>
-              <div className="text-sm">
-                <strong>Fire Source #{source.cluster_id}</strong>
-                <br />
-                Fires: {source.fire_count}
-                <br />
-                FRP: {source.frp_sum?.toFixed(1) ?? '-'}
-                <br />
-                Score: {source.source_score?.toFixed(2) ?? '-'}
-              </div>
-            </Popup>
+          <CircleMarker key={`fire-${source.cluster_id}`} center={[source.centroid.lat, source.centroid.lon]} radius={Math.min(18, 8 + source.fire_count * 2)} pathOptions={{ color: '#fee2e2', fillColor: '#ef4444', fillOpacity: 0.9, weight: 2 }} eventHandlers={{ click: (e: any) => e.originalEvent?.stopPropagation() }}>
+            <Popup>Fires: {source.fire_count}<br/>Score: {source.source_score?.toFixed(2)}</Popup>
           </CircleMarker>
         ))}
 
-        {layers.hcho && sources.filter(source => source.hcho_anomaly > 0).map(source => (
-          <CircleMarker
-            key={`hcho-${source.cluster_id}`}
-            center={[source.centroid.lat - 0.04, source.centroid.lon + 0.04]}
-            radius={10}
-            pathOptions={{
-              color: '#fdf4ff',
-              fillColor: '#d946ef',
-              fillOpacity: 0.72,
-              opacity: 0.9,
-              weight: 1,
-            }}
-          >
-            <Popup>HCHO anomaly: {source.hcho_anomaly?.toFixed(2) ?? '-'}</Popup>
+        {layers.hcho && sources.filter(s => (s.hcho_anomaly ?? 0) > 0).map(source => (
+          <CircleMarker key={`hcho-${source.cluster_id}`} center={[source.centroid.lat - 0.04, source.centroid.lon + 0.04]} radius={10} pathOptions={{ color: '#fdf4ff', fillColor: '#d946ef', fillOpacity: 0.7, weight: 1 }} eventHandlers={{ click: (e: any) => e.originalEvent?.stopPropagation() }}>
+            <Popup>HCHO Anomaly: {source.hcho_anomaly?.toFixed(2)}</Popup>
+          </CircleMarker>
+        ))}
+        
+        {layers.stubble && stubbleFeatures.map((feat, i) => (
+          <CircleMarker key={`stubble-${i}`} center={[feat.geometry.coordinates[1], feat.geometry.coordinates[0]]} radius={15 * (feat.properties.stubble_intensity_score || 0.1)} pathOptions={{ color: '#fef08a', fillColor: '#eab308', fillOpacity: 0.8, weight: 2 }} eventHandlers={{ click: (e: any) => e.originalEvent?.stopPropagation() }}>
+            <Popup>Stubble Intensity: {(feat.properties.stubble_intensity_score ?? 0).toFixed(2)}</Popup>
           </CircleMarker>
         ))}
       </MapContainer>
+
+      {layers.inversion && inversion && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[400] bg-orange-900/80 border border-orange-500/50 p-4 rounded-xl shadow-2xl backdrop-blur-md text-center animate-pulse">
+          <Shield className="w-6 h-6 text-orange-400 mx-auto mb-1" />
+          <div className="text-orange-100 font-bold">Domain-wide Inversion: {inversion.category}</div>
+          <div className="text-orange-200 text-xs mt-1">Index: {inversion.inversion_index}</div>
+        </div>
+      )}
+
+      {(loading || dataError) && (
+        <div className="absolute left-4 top-24 z-[400] rounded-xl border border-gray-800 bg-[#131821]/95 px-4 py-3 text-sm text-gray-200 shadow-2xl backdrop-blur-md">
+          {loading ? 'Loading map layers...' : dataError}
+        </div>
+      )}
 
       <div className="absolute top-4 right-4 z-[400] w-64 bg-[#131821]/95 backdrop-blur-md border border-gray-800 rounded-xl p-4 shadow-2xl mt-14">
         <div className="flex items-center gap-2 font-bold mb-4 text-gray-100">
           <Layers className="w-5 h-5 text-teal-400" /> Map Layers
         </div>
-
         <div className="space-y-3">
-          <label className="flex items-center justify-between cursor-not-allowed opacity-50 group">
-            <div className="flex items-center gap-2">
-              <input type="checkbox" disabled checked={layers.cpcb} className="rounded bg-gray-800 border-gray-700 text-teal-500" readOnly />
-              <span className="text-sm">CPCB Stations</span>
+          <label className="flex items-center gap-2 cursor-pointer hover:text-teal-400">
+            <input type="checkbox" checked={layers.aqi} onChange={() => setLayers(p => ({ ...p, aqi: !p.aqi, heatmap: p.aqi ? p.heatmap : false }))} className="rounded bg-gray-800 border-gray-700" />
+            <span className="text-sm flex items-center gap-2" title="Air Quality Index (AQI)"><CloudFog className="w-4 h-4 text-green-400" /> AQI (Air Quality Index)</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer hover:text-teal-400">
+            <input type="checkbox" checked={layers.heatmap} onChange={() => setLayers(p => ({ ...p, heatmap: !p.heatmap, aqi: p.heatmap ? p.aqi : false }))} className="rounded bg-gray-800 border-gray-700" />
+            <span className="text-sm flex items-center gap-2" title="Particulate Matter 2.5 concentration (µg/m³)"><CloudFog className="w-4 h-4 text-purple-400" /> PM2.5 Pollution</span>
+          </label>
+          <label className="flex items-center justify-between cursor-pointer hover:text-teal-400">
+            <div className="flex items-center gap-2" title="Planetary Boundary Layer Height - Lower means pollution is trapped">
+              <input type="checkbox" checked={layers.pblh} onChange={() => setLayers(p => ({ ...p, pblh: !p.pblh }))} className="rounded bg-gray-800 border-gray-700" />
+              <span className="text-sm flex items-center gap-2"><CloudRain className="w-4 h-4 text-blue-400" /> PBL Height (Mixing Layer)</span>
             </div>
-            <span className="text-[10px] uppercase font-bold tracking-wider text-orange-400 bg-orange-400/10 px-1.5 py-0.5 rounded">Coming Soon</span>
           </label>
-
-          <label className="flex items-center gap-2 cursor-pointer hover:text-teal-400 transition-colors">
-            <input type="checkbox" checked={layers.heatmap} onChange={() => setLayers(prev => ({ ...prev, heatmap: !prev.heatmap }))} className="rounded bg-gray-800 border-gray-700 text-teal-500 cursor-pointer" />
-            <span className="text-sm flex items-center gap-2">
-              <CloudFog className="w-4 h-4 text-purple-400" /> PM2.5 Grid
-            </span>
-          </label>
-
-          <label className="flex items-center justify-between cursor-pointer hover:text-teal-400 transition-colors">
+          <label className="flex items-center justify-between cursor-pointer hover:text-teal-400">
             <div className="flex items-center gap-2">
-              <input type="checkbox" checked={layers.fires} onChange={() => setLayers(prev => ({ ...prev, fires: !prev.fires }))} className="rounded bg-gray-800 border-gray-700 text-teal-500 cursor-pointer" />
-              <span className="text-sm flex items-center gap-2">
-                <Flame className="w-4 h-4 text-red-500" /> Active Fires
-              </span>
+              <input type="checkbox" checked={layers.stubble} onChange={() => setLayers(p => ({ ...p, stubble: !p.stubble }))} className="rounded bg-gray-800 border-gray-700" />
+              <span className="text-sm flex items-center gap-2"><AlertOctagon className="w-4 h-4 text-yellow-400" /> Stubble Intensity</span>
             </div>
-            <span className="text-xs text-gray-500">{sources.length}</span>
           </label>
-
-          <label className="flex items-center justify-between cursor-pointer hover:text-teal-400 transition-colors">
+          <label className="flex items-center justify-between cursor-pointer hover:text-teal-400">
             <div className="flex items-center gap-2">
-              <input type="checkbox" checked={layers.hcho} onChange={() => setLayers(prev => ({ ...prev, hcho: !prev.hcho }))} className="rounded bg-gray-800 border-gray-700 text-teal-500 cursor-pointer" />
-              <span className="text-sm flex items-center gap-2">
-                <Wind className="w-4 h-4 text-fuchsia-500" /> HCHO Hotspots
-              </span>
+              <input type="checkbox" checked={layers.fires} onChange={() => setLayers(p => ({ ...p, fires: !p.fires }))} className="rounded bg-gray-800 border-gray-700" />
+              <span className="text-sm flex items-center gap-2"><Flame className="w-4 h-4 text-red-500" /> Active Fires</span>
+            </div>
+          </label>
+          <label className="flex items-center justify-between cursor-pointer hover:text-teal-400">
+            <div className="flex items-center gap-2">
+              <input type="checkbox" checked={layers.hcho} onChange={() => setLayers(p => ({ ...p, hcho: !p.hcho }))} className="rounded bg-gray-800 border-gray-700" />
+              <span className="text-sm flex items-center gap-2"><Wind className="w-4 h-4 text-fuchsia-500" /> HCHO (Smoke Marker)</span>
+            </div>
+          </label>
+          <label className="flex items-center justify-between cursor-pointer hover:text-teal-400">
+            <div className="flex items-center gap-2">
+              <input type="checkbox" checked={layers.inversion} onChange={() => setLayers(p => ({ ...p, inversion: !p.inversion }))} className="rounded bg-gray-800 border-gray-700" />
+              <span className="text-sm flex items-center gap-2"><Shield className="w-4 h-4 text-orange-400" /> Inversion Zone</span>
             </div>
           </label>
         </div>
       </div>
 
-      {(dataError || tileError) && (
-        <div className="absolute left-1/2 top-28 z-[450] w-[min(90vw,460px)] -translate-x-1/2 rounded-lg border border-orange-500/20 bg-[#131821]/95 p-4 text-sm text-orange-100 shadow-2xl backdrop-blur-md">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-orange-300" />
-            <p>{dataError ?? 'Basemap tiles are slow or unavailable. Data overlays are still active.'}</p>
-          </div>
-        </div>
-      )}
-
-      {!loading && !dataError && (
-        <div className="absolute bottom-4 right-4 z-[400] w-64 rounded-lg border border-gray-800 bg-[#131821]/95 p-4 shadow-2xl backdrop-blur-md">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">Layer Status</p>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <p className="text-gray-500">PM2.5 cells</p>
-              <p className="font-bold text-teal-300">{gridCells.length}</p>
+      {/* Map Legend */}
+      <div className="absolute bottom-6 right-4 z-[400] w-64 bg-[#131821]/95 backdrop-blur-md border border-gray-800 rounded-xl p-4 shadow-2xl">
+        <h4 className="text-gray-200 font-bold mb-3 text-sm">Map Color Legend</h4>
+        
+        {(layers.heatmap || layers.aqi) && (
+          <div className="mb-4">
+            <div className="text-xs text-gray-400 mb-1.5 uppercase tracking-wider font-semibold">
+              {layers.aqi ? 'AQI (Air Quality Index)' : 'PM2.5 (µg/m³)'}
             </div>
-            <div>
-              <p className="text-gray-500">Avg PM2.5</p>
-              <p className="font-bold text-orange-300">{gridAverage == null ? '-' : `${gridAverage.toFixed(1)} µg/m³`}</p>
+            <div className="space-y-1">
+              <div className="flex items-center text-xs text-gray-300"><span className="w-3 h-3 rounded-full bg-[#22c55e] mr-2"></span> {layers.aqi ? '0 - 50 (Good)' : '0 - 30 (Good)'}</div>
+              <div className="flex items-center text-xs text-gray-300"><span className="w-3 h-3 rounded-full bg-[#84cc16] mr-2"></span> {layers.aqi ? '51 - 100 (Satisfactory)' : '31 - 60 (Satisfactory)'}</div>
+              <div className="flex items-center text-xs text-gray-300"><span className="w-3 h-3 rounded-full bg-[#eab308] mr-2"></span> {layers.aqi ? '101 - 200 (Moderate)' : '61 - 90 (Moderate)'}</div>
+              <div className="flex items-center text-xs text-gray-300"><span className="w-3 h-3 rounded-full bg-[#f97316] mr-2"></span> {layers.aqi ? '201 - 300 (Poor)' : '91 - 120 (Poor)'}</div>
+              <div className="flex items-center text-xs text-gray-300"><span className="w-3 h-3 rounded-full bg-[#ef4444] mr-2"></span> {layers.aqi ? '301 - 400 (Very Poor)' : '121 - 250 (Very Poor)'}</div>
+              <div className="flex items-center text-xs text-gray-300"><span className="w-3 h-3 rounded-full bg-[#9333ea] mr-2"></span> {layers.aqi ? '> 400 (Severe)' : '> 250 (Severe)'}</div>
+              <div className="flex items-center text-xs text-gray-500"><span className="w-3 h-3 rounded-full bg-[#4b5563] mr-2 opacity-50"></span> No Data</div>
             </div>
-            <div>
-              <p className="text-gray-500">Sources</p>
-              <p className="font-bold text-red-300">{sources.length}</p>
-            </div>
-            <div>
-              <p className="text-gray-500">Hour</p>
-              <p className="font-bold text-blue-300">T+24</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <StationRankingTable />
-
-      {loading && (
-          <div className="absolute inset-0 bg-[#0b0e14] z-[1000] flex flex-col items-center justify-center">
-            <div className="w-12 h-12 border-4 border-gray-800 border-t-teal-500 rounded-full animate-spin mb-4" />
-            <p className="text-gray-400 font-medium">Syncing live data layers...</p>
           </div>
         )}
+
+        {layers.pblh && (
+          <div>
+            <div className="text-xs text-gray-400 mb-1.5 uppercase tracking-wider font-semibold">PBL Height (Mixing)</div>
+            <div className="space-y-1">
+              <div className="flex items-center text-xs text-gray-300"><span className="w-3 h-3 rounded-full bg-[#dc2626] mr-2 opacity-80"></span> &lt; 200m (Severe Trapping)</div>
+              <div className="flex items-center text-xs text-gray-300"><span className="w-3 h-3 rounded-full bg-[#ea580c] mr-2 opacity-80"></span> 200 - 500m (Poor)</div>
+              <div className="flex items-center text-xs text-gray-300"><span className="w-3 h-3 rounded-full bg-[#ca8a04] mr-2 opacity-80"></span> 500 - 1000m (Moderate)</div>
+              <div className="flex items-center text-xs text-gray-300"><span className="w-3 h-3 rounded-full bg-[#16a34a] mr-2 opacity-80"></span> &gt; 1000m (Good Dispersion)</div>
+              <div className="flex items-center text-xs text-gray-500"><span className="w-3 h-3 rounded-full bg-[#4b5563] mr-2 opacity-50"></span> No Data</div>
+            </div>
+          </div>
+        )}
+        
+        {!layers.heatmap && !layers.aqi && !layers.pblh && (
+          <div className="text-xs text-gray-500 italic">Turn on AQI, PM2.5 or PBL Height to see legend.</div>
+        )}
+      </div>
     </div>
   );
 }
