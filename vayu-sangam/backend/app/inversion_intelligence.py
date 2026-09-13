@@ -81,6 +81,8 @@ class InversionPaths:
 @dataclass
 class HourlyInversionResult:
     """Typed container for a single-hour inversion result."""
+    mode: str
+    data_source: str
     hour: int
     timestamp: str
     pblh_m: float
@@ -97,8 +99,8 @@ class HourlyInversionResult:
 
     def as_api_dict(self) -> dict[str, Any]:
         return {
-            "mode": "demo",
-            "data_source": "bundled_demo_dataset",
+            "mode": self.mode,
+            "data_source": self.data_source,
             "model": "InversionIntelligencePrototype",
             "model_version": "0.3.0",
             "scientific_status": "prototype heuristic; not scientifically calibrated",
@@ -148,12 +150,31 @@ def _build_interpretation(r: HourlyInversionResult) -> str:
 
 
 class InversionIntelligenceService:
-    """Reads wind_demo.nc and computes an inversion/trapping index per hour."""
+    """Reads weather_live.nc (if fresh) or wind_demo.nc and computes an inversion/trapping index per hour."""
 
     def __init__(self, paths: InversionPaths | None = None) -> None:
         project_root = Path(__file__).resolve().parents[2]
         demo_dir = project_root / "backend" / "data" / "demo"
-        self.paths = paths or InversionPaths(wind=demo_dir / "wind_demo.nc")
+        live_dir = project_root / "backend" / "data" / "live"
+        
+        wind_path = demo_dir / "wind_demo.nc"
+        self.mode = "demo"
+        self.data_source = "bundled_demo_dataset"
+        
+        live_weather = live_dir / "weather_live.nc"
+        if live_weather.exists():
+            import datetime, os
+            try:
+                mtime = live_weather.stat().st_mtime
+                age_hours = (datetime.datetime.now().timestamp() - mtime) / 3600
+                if age_hours <= 6:
+                    wind_path = live_weather
+                    self.mode = "live"
+                    self.data_source = "live_weather_fetcher"
+            except Exception:
+                pass
+                
+        self.paths = paths or InversionPaths(wind=wind_path)
         self.ds = xr.open_dataset(self.paths.wind)
         # Slice to Delhi-NCR bounding box once at init
         self.ds_delhi = self.ds.sel(
@@ -231,6 +252,8 @@ class InversionIntelligenceService:
         inversion_index = _clamp_01(inversion_index)
 
         return HourlyInversionResult(
+            mode=self.mode,
+            data_source=self.data_source,
             hour=hour,
             timestamp=timestamp,
             pblh_m=pblh,

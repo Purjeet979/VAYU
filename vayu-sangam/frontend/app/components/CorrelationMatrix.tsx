@@ -55,19 +55,19 @@ export default function CorrelationMatrix({ forecast }: { forecast: any[] }) {
 
   if (!matrix.length) {
     return (
-      <div className="h-64 bg-[#131821] rounded-2xl border border-gray-800 mt-6 p-6 flex flex-col justify-center">
-        <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
-          <Network className="w-5 h-5 text-teal-400" /> Parameter Correlation
+      <div className="h-64 bg-panel rounded-2xl border border-panelBorder mt-6 p-6 flex flex-col justify-center">
+        <h3 className="text-lg font-semibold mb-2 flex items-center gap-2 text-foreground">
+          <Network className="w-5 h-5 text-teal-500 dark:text-teal-400" /> Parameter Correlation
         </h3>
-        <p className="text-sm text-gray-400">Forecast data is unavailable, so correlations cannot be calculated.</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">Forecast data is unavailable, so correlations cannot be calculated.</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-[#131821] rounded-2xl border border-gray-800 p-6 shadow-lg">
-      <h3 className="text-lg font-semibold mb-1 flex items-center gap-2">
-        <Network className="w-5 h-5 text-teal-400" /> Parameter Correlation
+    <div className="bg-panel rounded-2xl border border-panelBorder p-6 shadow-lg">
+      <h3 className="text-lg font-semibold mb-1 flex items-center gap-2 text-foreground">
+        <Network className="w-5 h-5 text-teal-500 dark:text-teal-400" /> Parameter Correlation
       </h3>
       
       <div className="overflow-x-auto">
@@ -85,7 +85,7 @@ export default function CorrelationMatrix({ forecast }: { forecast: any[] }) {
           {/* Rows */}
           {parameters.map((p1, i) => (
             <div key={i} className="flex items-center mb-1">
-              <div className="w-16 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right pr-3">
+              <div className="w-16 text-[10px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider text-right pr-3">
                 {p1.label}
               </div>
               {parameters.map((p2, j) => {

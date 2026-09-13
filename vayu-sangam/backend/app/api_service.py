@@ -327,10 +327,29 @@ def get_data_confidence(path) -> str:
                 parents.append("demo")
                 
         if "demo" in parents: return "Low (demo data)"
-        if "cache" in parents: return "Medium (cached data)"
-        return "High (live data)"
-    except Exception:
-        return "Low (demo data)"
+        
+        # Add nuance for OpenAQ fallback
+        meta_path = live_dir / "fetch_cpcb.meta.json"
+        if meta_path.exists():
+            import json
+            from datetime import datetime, timezone
+            try:
+                with open(meta_path, "r") as f:
+                    meta = json.load(f)
+                if meta.get("source") == "OpenAQ":
+                    # Check how old the data actually is
+                    ts = meta.get("last_successful_fetch_utc", "")
+                    try:
+                        data_dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                        age_hours = (datetime.now(timezone.utc) - data_dt).total_seconds() / 3600
+                        if age_hours >= 65:
+                            return f"Medium (Fallback, data aging ~{int(age_hours)}h)"
+                    except:
+                        pass
+                    return "Medium (OpenAQ Fallback)"
+            except:
+                pass
+                
         if "cache" in parents: return "Medium (cached data)"
         return "High (live data)"
     except Exception:

@@ -74,9 +74,9 @@ export default function LocationSearch({ onLocationFound }: { onLocationFound: (
   };
 
   return (
-    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[400] w-full max-w-md">
-      <form onSubmit={handleSearch} className="relative flex items-center bg-[#131821]/95 backdrop-blur-md border border-gray-800 rounded-full shadow-2xl p-1 overflow-hidden">
-        <div className="pl-3 text-gray-400">
+    <div className="w-full relative z-[400]">
+      <form onSubmit={handleSearch} className="relative flex items-center bg-panel/95 backdrop-blur-md border border-panelBorder rounded-2xl shadow-lg p-1 overflow-hidden h-12 md:h-14">
+        <div className="pl-3 text-gray-500">
           <Search className="w-5 h-5" />
         </div>
         <input 
@@ -84,12 +84,12 @@ export default function LocationSearch({ onLocationFound }: { onLocationFound: (
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search location (e.g. Noida, Gurgaon)"
-          className="flex-1 bg-transparent border-none outline-none text-gray-100 placeholder-gray-500 px-3 py-2 text-sm"
+          className="flex-1 bg-transparent border-none outline-none text-foreground placeholder-gray-500 px-3 py-2 text-sm md:text-base"
         />
         <button 
           type="button" 
           onClick={handleGeolocation}
-          className="p-2 rounded-full hover:bg-gray-800 text-teal-400 transition-colors tooltip"
+          className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 text-cyan transition-colors tooltip"
           title="Use my location"
         >
           <Navigation className="w-5 h-5" />
@@ -97,10 +97,10 @@ export default function LocationSearch({ onLocationFound }: { onLocationFound: (
       </form>
 
       {message && (
-        <div className={`mt-2 mx-auto w-max px-4 py-2 rounded-full text-xs font-medium flex items-center gap-2 shadow-lg backdrop-blur-md ${
-          message.type === 'error' ? 'bg-red-500/20 text-red-300 border border-red-500/20' :
-          message.type === 'info' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/20' :
-          'bg-teal-500/20 text-teal-300 border border-teal-500/20'
+        <div className={`absolute top-full mt-2 left-0 w-full px-4 py-2 rounded-xl text-xs md:text-sm font-medium flex items-center gap-2 shadow-lg backdrop-blur-md ${
+          message.type === 'error' ? 'bg-red-500/10 text-red-500 border border-red-500/20' :
+          message.type === 'info' ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20' :
+          'bg-cyan/10 text-cyan border border-cyan/20'
         }`}>
           {message.type === 'info' && <AlertCircle className="w-4 h-4" />}
           {message.text}

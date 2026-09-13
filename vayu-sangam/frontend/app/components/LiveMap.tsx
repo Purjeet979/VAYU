@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { useEffect, useMemo, useState } from 'react';
 import { Layers, Flame, CloudFog, Wind, CloudRain, Shield, AlertOctagon } from 'lucide-react';
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap, useMapEvent, GeoJSON } from 'react-leaflet';
@@ -10,11 +12,6 @@ import { fetchJson } from '../lib/api';
 
 const DELHI_CENTER: [number, number] = [28.6139, 77.209];
 const TILE_URL = process.env.NEXT_PUBLIC_MAP_TILE_URL || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-
-const DELHI_BOUNDS: [[number, number], [number, number]] = [
-  [28.3, 76.8], // Min Lat/Lon from backend
-  [29.0, 77.6]  // Max Lat/Lon from backend
-];
 
 type GridData = {
   lat: number[];
@@ -33,10 +30,14 @@ type SourcePoint = {
   hcho_anomaly?: number;
 };
 
-type MapDataResponse = {
-  grid?: GridData;
-  sources?: {
-    sources?: SourcePoint[];
+type NowcastResponse = {
+  grid: {
+    lats: number[];
+    lons: number[];
+  };
+  layers: {
+    pm25: (number | null)[][];
+    aqi: (number | null)[][];
   };
 };
 
@@ -58,13 +59,6 @@ type InversionResponse = {
   inversion_index?: number;
 };
 
-type MapCell = {
-  id: string;
-  center: [number, number];
-  value: number;
-  radiusMeters: number;
-};
-
 function colorForPm25(value: number | null | undefined) {
   if (value === null || value === undefined) return '#4b5563'; // Gray for no-data
   if (value > 250) return '#9333ea'; // Severe
@@ -80,9 +74,6 @@ function colorForPblh(value: number | null | undefined) {
   if (value < 500) return '#ea580c';
   if (value < 1000) return '#ca8a04';
   return '#16a34a';
-  if (value < 500) return '#ea580c';
-  if (value < 1000) return '#ca8a04';
-  return '#16a34a';
 }
 
 function colorForAqi(value: number | null | undefined): string {
@@ -95,9 +86,13 @@ function colorForAqi(value: number | null | undefined): string {
   return '#22c55e';
 }
 
-function MapController({ searchedLocation, onZoomOut }: { searchedLocation: [number, number] | null, onZoomOut: () => void }) {
+function MapController({ searchedLocation, onZoomOut, setMapInstance }: { searchedLocation: [number, number] | null, onZoomOut: () => void, setMapInstance: (m: any) => void }) {
   const map = useMap();
   
+  useEffect(() => {
+    if (map) setMapInstance(map);
+  }, [map, setMapInstance]);
+
   useMapEvent('zoomend', () => {
     if (map.getZoom() < 9) onZoomOut(); // Lowered threshold to prevent race condition on large districts
   });
@@ -108,7 +103,7 @@ function MapController({ searchedLocation, onZoomOut }: { searchedLocation: [num
 
   useEffect(() => { 
     const t = setTimeout(() => {
-      try { if (map && map.getContainer()) map.invalidateSize(); } catch (e) {}
+      try { if (map && map.getContainer()) map.invalidateSize(); } catch {}
     }, 100); 
     return () => clearTimeout(t);
   }, [map]);
@@ -120,12 +115,12 @@ function MapController({ searchedLocation, onZoomOut }: { searchedLocation: [num
 
 // --- Ray Casting Algorithm for Point in Polygon ---
 function pointInPolygon(point: [number, number], vs: [number, number][]) {
-  let x = point[0], y = point[1];
+  const x = point[0], y = point[1];
   let inside = false;
   for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
-    let xi = vs[i][0], yi = vs[i][1];
-    let xj = vs[j][0], yj = vs[j][1];
-    let intersect = ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    const xi = vs[i][0], yi = vs[i][1];
+    const xj = vs[j][0], yj = vs[j][1];
+    const intersect = ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
     if (intersect) inside = !inside;
   }
   return inside;
@@ -197,6 +192,7 @@ export default function LiveMap() {
   
   const mapMode = 'nowcast';
   const [selectedDistrict, setSelectedDistrict] = useState<string | null>(null);
+  const [mapInstance, setMapInstance] = useState<any>(null);
 
   const [loading, setLoading] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
@@ -216,49 +212,70 @@ export default function LiveMap() {
     setLoading(true);
     setDataError(null);
 
-    const gridPromise = mapMode === 'nowcast' 
-      ? fetchJson<any>('/api/nowcast').then(res => ({
-          pm25: { lat: res.grid.lats, lon: res.grid.lons, values: res.layers.pm25 },
-          aqi: { lat: res.grid.lats, lon: res.grid.lons, values: res.layers.aqi }
-        })).catch(() => null)
-      : fetchJson<MapDataResponse>('/api/map-data?hour=24&variable=pm25').then(res => res.grid).catch(() => null);
-
     Promise.all([
-      mapMode === 'forecast' ? fetchJson<MapDataResponse>('/api/map-data?hour=24&variable=pm25') : Promise.resolve({} as MapDataResponse),
-      gridPromise,
-      fetchJson<GridData>('/api/forecast/grid?hour=24&variable=pblh').catch(() => null),
-      fetchJson<StubbleResponse>('/api/emissions/stubble?hour=24').catch(() => null),
-      fetchJson<InversionResponse>('/api/inversion?hour=24').catch(() => null),
-      fetch('/ncr_districts.geojson').then(r => r.json()).catch(() => null)
-    ]).then(([main, activeGrid, pblh, stubble, inv, distGeo]) => {
-      // In nowcast mode, we don't have simulated source paths, just use an empty array or fetch separate sources API if available. 
-      // For now, keep sources from forecast if needed, but since it's live, we'll keep it simple.
-      if (main?.sources?.sources) setSources(main.sources.sources);
-      if (activeGrid && activeGrid.pm25) {
-        setGrid(activeGrid.pm25 as GridData);
-        setAqiGrid(activeGrid.aqi as GridData);
+      fetchJson<NowcastResponse>('/api/nowcast', { timeoutMs: 4000 }).catch(() => null),
+      fetchJson<{ sources?: SourcePoint[] }>('/api/sources', { timeoutMs: 3000 }).catch(() => null)
+    ]).then(([nowcast, sourcesData]) => {
+      if (sourcesData?.sources) setSources(sourcesData.sources);
+
+      if (nowcast?.grid && nowcast.layers) {
+        setGrid({ lat: nowcast.grid.lats, lon: nowcast.grid.lons, values: nowcast.layers.pm25 });
+        setAqiGrid({ lat: nowcast.grid.lats, lon: nowcast.grid.lons, values: nowcast.layers.aqi });
       } else {
         setGrid(null);
         setAqiGrid(null);
+        setDataError('Map data could not be loaded.');
       }
-      if (pblh?.values) setPblhGrid(pblh);
-      if (stubble?.features) setStubbleFeatures(stubble.features);
-      if (inv) setInversion(inv);
-      if (distGeo) setDistrictsGeoJson(distGeo);
     }).catch(() => {
       setDataError('Map data could not be loaded.');
     }).finally(() => setLoading(false));
   }, [mapMode]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      fetch('/ncr_districts.geojson', { cache: 'force-cache' })
+        .then(r => r.json())
+        .then(setDistrictsGeoJson)
+        .catch(() => setDistrictsGeoJson(null));
+    }, 100);
+
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!layers.pblh || pblhGrid) return;
+    fetchJson<GridData>('/api/forecast/grid?hour=24&variable=pblh', { timeoutMs: 3500 })
+      .then(data => {
+        if (data?.values) setPblhGrid(data);
+      })
+      .catch(() => {});
+  }, [layers.pblh, pblhGrid]);
+
+  useEffect(() => {
+    if (!layers.stubble || stubbleFeatures.length > 0) return;
+    fetchJson<StubbleResponse>('/api/emissions/stubble?hour=24', { timeoutMs: 3500 })
+      .then(data => {
+        if (data?.features) setStubbleFeatures(data.features);
+      })
+      .catch(() => {});
+  }, [layers.stubble, stubbleFeatures.length]);
+
+  useEffect(() => {
+    if (!layers.inversion || inversion) return;
+    fetchJson<InversionResponse>('/api/inversion?hour=24', { timeoutMs: 3500 })
+      .then(data => setInversion(data))
+      .catch(() => {});
+  }, [layers.inversion, inversion]);
 
   const pm25GeoJson = useMemo(() => computeChoropleth(districtsGeoJson, grid), [districtsGeoJson, grid]);
   const aqiGeoJson = useMemo(() => computeChoropleth(districtsGeoJson, aqiGrid), [districtsGeoJson, aqiGrid]);
   const pblhGeoJson = useMemo(() => computeChoropleth(districtsGeoJson, pblhGrid), [districtsGeoJson, pblhGrid]);
 
   const selectedDistrictMesh = useMemo(() => {
-    if (!selectedDistrict || !districtsGeoJson || !grid) return { pm25: [], pblh: [] };
+    if (!selectedDistrict || !districtsGeoJson || !grid) return { pm25: [], aqi: [], pblh: [] };
     
     const feature = districtsGeoJson.features.find((f: any) => f.properties.name === selectedDistrict);
-    if (!feature) return { pm25: [], pblh: [] };
+    if (!feature) return { pm25: [], aqi: [], pblh: [] };
 
     const pm25Points: any[] = [];
     const aqiPoints: any[] = [];
@@ -289,12 +306,12 @@ export default function LiveMap() {
   // but we can just use inline transition style if needed.
 
   return (
-    <div className="relative flex flex-1 w-full min-h-[calc(100vh-65px)] overflow-hidden bg-[#070b11]">
+    <div className="relative flex-1 w-full h-full overflow-hidden rounded-xl bg-[#070b11]">
       <LocationSearch onLocationFound={(lat, lon) => setSearchedLocation([lat, lon])} />
 
 
       <MapContainer center={DELHI_CENTER} zoom={10} minZoom={5} maxZoom={13} className="absolute inset-0 z-10 h-full w-full">
-        <MapController searchedLocation={searchedLocation} onZoomOut={() => setSelectedDistrict(null)} />
+        <MapController searchedLocation={searchedLocation} onZoomOut={() => setSelectedDistrict(null)} setMapInstance={setMapInstance} />
         <TileLayer url={TILE_URL} attribution='&copy; OpenStreetMap' />
 
         {layers.heatmap && pm25GeoJson && (
@@ -317,7 +334,7 @@ export default function LiveMap() {
               layer.on('click', (e: any) => {
                 e.originalEvent?.stopPropagation();
                 setSelectedDistrict(feature.properties.name);
-                e.target._map.fitBounds(e.target.getBounds());
+                if (mapInstance) mapInstance.fitBounds(e.target.getBounds());
               });
             }}
           />
@@ -343,7 +360,7 @@ export default function LiveMap() {
               layer.on('click', (e: any) => {
                 e.originalEvent?.stopPropagation();
                 setSelectedDistrict(feature.properties.name);
-                e.target._map.fitBounds(e.target.getBounds());
+                if (mapInstance) mapInstance.fitBounds(e.target.getBounds());
               });
             }}
           />
@@ -369,7 +386,7 @@ export default function LiveMap() {
               layer.on('click', (e: any) => {
                 e.originalEvent?.stopPropagation(); // Prevent bubbling to map background click
                 setSelectedDistrict(feature.properties.name);
-                e.target._map.fitBounds(e.target.getBounds());
+                if (mapInstance) mapInstance.fitBounds(e.target.getBounds());
               });
             }}
           />
@@ -445,7 +462,7 @@ export default function LiveMap() {
         <div className="flex items-center gap-2 font-bold mb-4 text-gray-100">
           <Layers className="w-5 h-5 text-teal-400" /> Map Layers
         </div>
-        <div className="space-y-3">
+        <div className="space-y-3 text-gray-200">
           <label className="flex items-center gap-2 cursor-pointer hover:text-teal-400">
             <input type="checkbox" checked={layers.aqi} onChange={() => setLayers(p => ({ ...p, aqi: !p.aqi, heatmap: p.aqi ? p.heatmap : false }))} className="rounded bg-gray-800 border-gray-700" />
             <span className="text-sm flex items-center gap-2" title="Air Quality Index (AQI)"><CloudFog className="w-4 h-4 text-green-400" /> AQI (Air Quality Index)</span>
@@ -488,7 +505,7 @@ export default function LiveMap() {
       </div>
 
       {/* Map Legend */}
-      <div className="absolute bottom-6 right-4 z-[400] w-64 bg-[#131821]/95 backdrop-blur-md border border-gray-800 rounded-xl p-4 shadow-2xl">
+      <div className="absolute bottom-6 left-4 z-[400] w-64 bg-[#131821]/95 backdrop-blur-md border border-gray-800 rounded-xl p-4 shadow-2xl">
         <h4 className="text-gray-200 font-bold mb-3 text-sm">Map Color Legend</h4>
         
         {(layers.heatmap || layers.aqi) && (

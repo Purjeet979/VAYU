@@ -1,0 +1,37 @@
+{
+  "feature_names": [
+    "temperature_c",
+    "relative_humidity_pct",
+    "wind_speed_mps",
+    "wind_dir_deg",
+    "precipitation",
+    "pbl_height_m",
+    "hour_of_day",
+    "month",
+    "day_of_week",
+    "is_stubble_season",
+    "fire_count_24h",
+    "fire_frp_sum_24h",
+    "fire_frp_max_24h",
+    "pm25_lag1h",
+    "pm25_lag3h",
+    "pm25_lag24h"
+  ],
+  "base_value_pm25": 124.18859100341797,
+  "metrics": {
+    "pm25": {
+      "r2": 0.9709,
+      "mae": 7.38,
+      "rmse": 10.97
+    },
+    "aqi": {
+      "r2": 0.6566,
+      "mae": 45.21,
+      "rmse": 52.8
+    }
+  },
+  "train_range": "2015-01-02 to 2019-05-28",
+  "test_range": "2019-12-14 to 2020-07-01",
+  "n_train": 38376,
+  "n_test": 4798
+}

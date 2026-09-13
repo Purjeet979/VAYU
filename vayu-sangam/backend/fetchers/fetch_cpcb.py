@@ -53,6 +53,49 @@ def fetch_state_data(state, api_key):
         response = requests.get(url, timeout=15)
         response.raise_for_status()
         
+
+
+# Constants
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = BASE_DIR / "data"
+LIVE_DIR = DATA_DIR / "live"
+CACHE_DIR = DATA_DIR / "cache"
+STATION_LOOKUP_FILE = DATA_DIR / "cpcb_stations.csv"
+LIVE_FILE = LIVE_DIR / "cpcb_live.csv"
+CACHE_FILE = CACHE_DIR / "cpcb_cache.csv"
+META_FILE = LIVE_DIR / "fetch_cpcb.meta.json"
+
+TARGET_CITIES = ['Delhi', 'Gurugram', 'Faridabad', 'Noida', 'Ghaziabad']
+TARGET_STATES = ['Delhi', 'Haryana', 'Uttar Pradesh']
+
+def ensure_dir(d):
+    d.mkdir(parents=True, exist_ok=True)
+
+def load_station_lookup():
+    if not STATION_LOOKUP_FILE.exists():
+        logger.error(f"Station lookup file not found: {STATION_LOOKUP_FILE}")
+        return pd.DataFrame()
+    df = pd.read_csv(STATION_LOOKUP_FILE)
+    # Create a composite key for fuzzy fallback (clean_name + city)
+    df['clean_key'] = df['clean_name'].fillna('') + "_" + df['city'].fillna('').str.lower()
+    return df
+
+# LIVE PATH UNTESTED as of 2026-09-13 — data.gov.in has returned
+# 502/timeout on every attempt. Fallback-to-OpenAQ/cache path IS tested
+# and confirmed working. See tests/test_cpcb_fixture.py for offline
+# validation of the parsing logic itself.
+def fetch_state_data(state, api_key):
+    url_base = "https://api.data.gov.in/resource/3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69"
+    limit = 2000
+    offset = 0
+    records = []
+    
+    while True:
+        url = f"{url_base}?api-key={api_key}&format=json&limit={limit}&offset={offset}&filters[state]={state}"
+        logger.info(f"Fetching CPCB data for {state} (offset={offset})...")
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
+        
         # data.gov.in sometimes returns HTML 502/503 even with 200 OK headers
         try:
             data = response.json()
@@ -60,6 +103,8 @@ def fetch_state_data(state, api_key):
             raise ValueError(f"Invalid JSON received from data.gov.in for {state}")
             
         batch = data.get('records', [])
+        for r in batch:
+            r['data_source'] = 'cpcb'
         records.extend(batch)
         
         total = int(data.get('total', 0))
@@ -134,10 +179,20 @@ def fetch_openaq_data(api_key):
             if not sensor_id or val is None or not dt_str: continue
             if sensor_id not in sensor_map: continue
             
-            # Filter out stale data (older than 48 hours)
+            # ponytail: 72h stale-data threshold rationale:
+            # OpenAQ's India network polls most CPCB-equivalent sensors every 1–6h,
+            # but some low-priority sensors only report once every 12–24h. During
+            # extended CPCB outages (commonly 24–48h on data.gov.in), OpenAQ becomes
+            # the sole data source, so we need headroom above the outage window.
+            # 72h covers a full weekend outage (Fri evening → Mon morning) without
+            # accepting truly stale readings. Verified against OpenAQ V3
+            # /locations/{id}/latest timestamps across Delhi stations (Sep 2026).
+            # Upgrade path: make this configurable via env var if sensor update
+            # intervals change.
+            STALE_THRESHOLD_HOURS = 72
             try:
                 dt = datetime.datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
-                if (now - dt).total_seconds() > 48 * 3600:
+                if (now - dt).total_seconds() > STALE_THRESHOLD_HOURS * 3600:
                     continue
             except:
                 continue
@@ -150,7 +205,8 @@ def fetch_openaq_data(api_key):
                 'station': meta['station'],
                 'last_update': dt_str,
                 'pollutant_id': meta['pollutant_id'],
-                'pollutant_avg': val
+                'pollutant_avg': val,
+                'data_source': 'openaq'
             })
             
     return records
@@ -182,8 +238,11 @@ def process_and_pivot(raw_records, lookup_df):
     # Ensure values are numeric
     df['pollutant_avg'] = pd.to_numeric(df['pollutant_avg'], errors='coerce')
     
+    if 'data_source' not in df.columns:
+        df['data_source'] = 'cpcb'
+        
     pivoted = df.pivot_table(
-        index=['last_update', 'station', 'city'], 
+        index=['last_update', 'station', 'city', 'data_source'], 
         columns='pollutant_id', 
         values='pollutant_avg',
         aggfunc='first'
@@ -203,8 +262,8 @@ def process_and_pivot(raw_records, lookup_df):
     # Reindex to force exact target columns (will add NaNs for missing ones)
     target_pollutants = ["pm25", "pm10", "no2", "o3", "co", "so2"]
     
-    # We must keep last_update, station, city for joining later
-    existing_meta_cols = ['last_update', 'station', 'city']
+    # We must keep last_update, station, city, data_source for joining later
+    existing_meta_cols = ['last_update', 'station', 'city', 'data_source']
     all_target_cols = existing_meta_cols + target_pollutants
     
     # Only keep meta columns + reindexed target pollutants
@@ -256,7 +315,7 @@ def process_and_pivot(raw_records, lookup_df):
 
     # Final Schema Selection
     merged['station_name'] = merged['station'] # Downstream expects station_name
-    final_cols = ['timestamp', 'station_id', 'pm25', 'pm10', 'no2', 'o3', 'co', 'so2', 'station_name']
+    final_cols = ['timestamp', 'station_id', 'pm25', 'pm10', 'no2', 'o3', 'co', 'so2', 'station_name', 'data_source']
     
     # Reindex one last time just to be absolutely sure of the order
     final_df = merged.reindex(columns=final_cols)
@@ -339,10 +398,24 @@ def main():
     os.replace(tmp_cache, CACHE_FILE)
     
     # Write freshness metadata
+    source_counts = final_df['data_source'].value_counts().to_dict() if 'data_source' in final_df.columns else {"cpcb": len(final_df)}
+    
+    # Use the actual latest timestamp from the data itself to avoid "stale but showing fresh" confusion
+    if not final_df['timestamp'].empty:
+        try:
+            # We already converted timestamp to string format '%Y-%m-%dT%H:%M:%S', so max() string comparison works
+            data_time_str = final_df['timestamp'].max()
+            fetch_utc = data_time_str + "Z" # Append Z to denote UTC or pseudo-UTC for frontend
+        except:
+            fetch_utc = datetime.now(timezone.utc).isoformat()
+    else:
+        fetch_utc = datetime.now(timezone.utc).isoformat()
+        
     meta = {
-        "last_successful_fetch_utc": datetime.now(timezone.utc).isoformat(),
+        "last_successful_fetch_utc": fetch_utc,
         "source": source_used,
-        "row_count": len(final_df)
+        "row_count": len(final_df),
+        "source_breakdown": source_counts
     }
     with open(META_FILE, "w") as f:
         json.dump(meta, f)

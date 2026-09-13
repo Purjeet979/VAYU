@@ -5,3 +5,13 @@ __pycache__/
 *.pyc
 .env
 .DS_Store
+*.log
+.pytest_cache/
+
+# Sensitive credentials
+kaggle.json
+reference-node-*.json
+
+# Artifact plots
+model_evaluation.png
+shap_summary.png

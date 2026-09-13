@@ -3,7 +3,56 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --background: #f4f7f6;
+    --foreground: #1e293b;
+    --panel: #ffffff;
+    --panel-border: #e2e8f0;
+    --btn-bg: #e2e8f0;
+    --btn-text: #1e293b;
+    --btn-hover: #cbd5e1;
+    --hero-from: #111827;
+    --hero-to: #4b5563;
+    --text-muted: #64748b;
+    --icon-bg: #f1f5f9;
+  }
+
+  .dark {
+    --background: #0b0e14;
+    --foreground: #f3f4f6;
+    --panel: #131821;
+    --panel-border: #1f2937;
+    --btn-bg: #1f2937;
+    --btn-text: #ffffff;
+    --btn-hover: #374151;
+    --hero-from: #ffffff;
+    --hero-to: #9ca3af;
+    --text-muted: #9ca3af;
+    --icon-bg: #1f2937;
+  }
+
+  /* Invert map tiles for Dark Mode automatically */
+  .dark .leaflet-layer,
+  .dark .leaflet-control-zoom-in,
+  .dark .leaflet-control-zoom-out,
+  .dark .leaflet-control-attribution {
+    filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+  }
+
   body {
-    @apply bg-[#0b0e14] text-gray-100 antialiased;
+    @apply bg-background text-foreground antialiased transition-colors duration-300;
+  }
+
+  /* Custom scrollbar for webkit */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: var(--panel-border);
+    border-radius: 9999px;
   }
 }

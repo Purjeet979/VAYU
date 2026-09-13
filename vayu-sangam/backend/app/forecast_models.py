@@ -60,8 +60,27 @@ class DemoForecastModel(ForecastModel):
     def __init__(self, paths: ForecastPaths | None = None) -> None:
         project_root = Path(__file__).resolve().parents[2]
         demo_dir = project_root / "backend" / "data" / "demo"
+        live_dir = project_root / "backend" / "data" / "live"
+        
+        wind_path = demo_dir / "wind_demo.nc"
+        self.mode = "demo"
+        self.data_source = "bundled_demo_dataset"
+        
+        live_weather = live_dir / "weather_live.nc"
+        if live_weather.exists():
+            import datetime
+            try:
+                mtime = live_weather.stat().st_mtime
+                age_hours = (datetime.datetime.now().timestamp() - mtime) / 3600
+                if age_hours <= 6:
+                    wind_path = live_weather
+                    self.mode = "live"
+                    self.data_source = "live_weather_fetcher"
+            except Exception:
+                pass
+                
         self.paths = paths or ForecastPaths(
-            forecast=demo_dir / "forecast_demo.nc", wind=demo_dir / "wind_demo.nc"
+            forecast=demo_dir / "forecast_demo.nc", wind=wind_path
         )
         self._forecast = xr.open_dataset(self.paths.forecast).load()
         self._weather = xr.open_dataset(self.paths.wind).load()
@@ -96,8 +115,8 @@ class DemoForecastModel(ForecastModel):
 
         result.attrs.update(
             {
-                "mode": "demo",
-                "data_source": "bundled_demo_dataset",
+                "mode": getattr(self, "mode", "demo"),
+                "data_source": getattr(self, "data_source", "bundled_demo_dataset"),
                 "model": self.model_name,
                 "model_version": self.model_version,
                 "stubble_fraction": fraction,

@@ -19,6 +19,7 @@ from .api_service import (
 )
 from .scenario_engine import get_scenario_engine
 from .schemas import ScenarioRequest, ScenarioResponse
+from . import ml_explainer
 
 app = FastAPI(title="VayuSangam-AI API")
 
@@ -198,7 +199,10 @@ def run_scenario(request: ScenarioRequest):
 
 @app.get("/api/explanation")
 def get_explanation(hour: int = Query(default=24, ge=0, le=72, description="Forecast hour")):
-    """Return explainable prototype evidence for the selected forecast hour."""
+    """Return real SHAP explanation if trained model exists, else heuristic prototype."""
+    shap_result = ml_explainer.explain_hour(hour)
+    if shap_result is not None:
+        return shap_result
     return build_explanation(hour)
 
 
@@ -224,3 +228,82 @@ def get_nowcast():
         return grid_data
     except Exception as error:
         raise HTTPException(status_code=500, detail=str(error)) from error
+
+@app.get("/api/ml/shap")
+def get_ml_shap(hour: int = Query(default=24, ge=0, le=72, description="Forecast hour")):
+    """Return real SHAP values from trained XGBoost model (PM2.5 R²=0.97)."""
+    if not ml_explainer.ml_available():
+        raise HTTPException(
+            status_code=503,
+            detail="Trained ML model not found. Place xgb_pm25.joblib and xgb_aqi.joblib in backend/data/ml/"
+        )
+    result = ml_explainer.explain_hour(hour)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Explanation not available for this hour.")
+    return result
+
+@app.get("/api/ml/status")
+def get_ml_status():
+    """Check whether the trained XGBoost model is loaded and ready."""
+    available = ml_explainer.ml_available()
+    return {
+        "ml_model_available": available,
+        "model": "XGBoostAQIPredictor" if available else None,
+        "endpoints": ["/api/ml/shap", "/api/explanation"] if available else [],
+        "note": "real SHAP active" if available else "heuristic explainability active (no model files)",
+    }
+
+
+@app.get("/api/explain/{hour}")
+def get_explain_by_hour(hour: int):
+    """Alias for /api/explanation?hour={hour} — consumed by DominantDriversPanel."""
+    explanation = build_explanation(min(hour, 72))
+    # Flatten primary_drivers into a string list for the frontend
+    drivers = explanation.get("primary_drivers", [])
+    return {
+        "dominant_drivers": [
+            f"{d['factor']}: {d['evidence']}" for d in drivers if isinstance(d, dict)
+        ],
+        **explanation,
+    }
+
+
+@app.get("/api/forecast/stations")
+def get_forecast_stations():
+    """Return per-station forecast by interpolating the grid at each CPCB station location."""
+    import numpy as np
+    stations = cached_cpcb_latest()
+    if not stations:
+        return []
+
+    forecast_data = cached_forecast(72).get("forecast", [])
+    results = []
+    for station in stations:
+        lat = station.get("lat")
+        lon = station.get("lon")
+        if lat is None or lon is None:
+            continue
+        # Build per-hour forecast for this station by sampling the nearest grid cell
+        per_hour = []
+        for h in range(0, 72, 6):  # every 6 hours for efficiency
+            try:
+                grid = cached_grid(h, "pm25")
+                lats = grid["lat"]
+                lons = grid["lon"]
+                values = grid["values"]
+                # Find nearest grid point
+                lat_idx = int(np.argmin([abs(gl - lat) for gl in lats]))
+                lon_idx = int(np.argmin([abs(gl - lon) for gl in lons]))
+                pm25_val = values[lat_idx][lon_idx]
+                # Rough AQI from PM2.5
+                aqi_val = int(pm25_val * 1.6) if pm25_val is not None else None
+                per_hour.append({"hour": h, "pm25": round(pm25_val, 1) if pm25_val else 0, "aqi": aqi_val or 0})
+            except Exception:
+                per_hour.append({"hour": h, "pm25": 0, "aqi": 0})
+        results.append({
+            "station_id": station.get("station_id", ""),
+            "station_name": station.get("station_name", ""),
+            "forecast": per_hour,
+        })
+    return results
+
