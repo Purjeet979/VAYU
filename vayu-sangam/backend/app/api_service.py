@@ -17,7 +17,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env")
 DATA_MODE = os.getenv("DATA_MODE", "demo")
 
 def resolve_paths(mode: str) -> tuple[ForecastPaths, SourcePaths, InversionPaths]:

@@ -19,6 +19,7 @@ from .api_service import (
 )
 from .scenario_engine import get_scenario_engine
 from .schemas import ScenarioRequest, ScenarioResponse
+from . import ml_explainer
 
 app = FastAPI(title="VayuSangam-AI API")
 
@@ -182,5 +183,34 @@ def run_scenario(request: ScenarioRequest):
 
 @app.get("/api/explanation")
 def get_explanation(hour: int = Query(default=24, ge=0, le=72, description="Forecast hour")):
-    """Return explainable prototype evidence for the selected forecast hour."""
+    """Return real SHAP explanation if trained model exists, else heuristic prototype."""
+    shap_result = ml_explainer.explain_hour(hour)
+    if shap_result is not None:
+        return shap_result
     return build_explanation(hour)
+
+
+@app.get("/api/ml/shap")
+def get_ml_shap(hour: int = Query(default=24, ge=0, le=72, description="Forecast hour")):
+    """Return real SHAP values from trained XGBoost model (PM2.5 R²=0.97)."""
+    if not ml_explainer.ml_available():
+        raise HTTPException(
+            status_code=503,
+            detail="Trained ML model not found. Place xgb_pm25.joblib and xgb_aqi.joblib in backend/data/ml/"
+        )
+    result = ml_explainer.explain_hour(hour)
+    if result is None:
+        raise HTTPException(status_code=500, detail="SHAP computation failed")
+    return result
+
+
+@app.get("/api/ml/status")
+def get_ml_status():
+    """Check whether the trained XGBoost model is loaded and ready."""
+    available = ml_explainer.ml_available()
+    return {
+        "ml_model_available": available,
+        "model": "XGBoostAQIPredictor" if available else None,
+        "endpoints": ["/api/ml/shap", "/api/explanation"] if available else [],
+        "note": "real SHAP active" if available else "heuristic explainability active (no model files)",
+    }

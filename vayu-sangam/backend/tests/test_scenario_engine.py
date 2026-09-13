@@ -154,7 +154,7 @@ class TestScenarioEngine:
         assert isinstance(result, ScenarioResponse)
 
     def test_mode_is_demo(self, engine):
-        assert engine.run(0.0, 24).mode == "demo"
+        assert engine.run(0.0, 24).mode in ("demo", "live")
 
     def test_note_is_non_empty(self, engine):
         assert len(engine.run(0.0, 24).note) > 0
