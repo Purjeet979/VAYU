@@ -6,11 +6,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from .api_service import (
     GRID_VARIABLES,
     build_explanation,
+    cached_cpcb,
+    cached_cpcb_latest,
+    cached_dashboard_summary,
     cached_forecast,
     cached_grid,
     cached_inversion,
+    cached_map_data,
     cached_sources,
     get_demo_forecast_model,
+    DATA_MODE,
 )
 from .scenario_engine import get_scenario_engine
 from .schemas import ScenarioRequest, ScenarioResponse
@@ -39,7 +44,7 @@ def get_health():
         cached_inversion(0)
         return {
             "status": "ok",
-            "mode": "demo",
+            "mode": DATA_MODE,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "services": {
                 "forecast": {"status": "ok", "model": model.model_name, "hours": model.max_horizon},
@@ -74,7 +79,7 @@ def get_72_hour_forecast():
     """Backward-compatible endpoint for the Phase 1 frontend."""
     modern_forecast = cached_forecast(72)["forecast"]
     return {
-        "mode": "demo",
+        "mode": DATA_MODE,
         "forecast": [
             {
                 "time": row["timestamp"], "aqi": row["aqi"], "pm25": row["pm25_ug_m3"],
@@ -92,10 +97,49 @@ def get_map_layers():
     """Backward-compatible source layer that now returns calculated clusters."""
     return cached_sources(24)
 
+
+@app.get("/api/cpcb")
+def get_cpcb():
+    """Return file-backed CPCB station observations for rankings and heatmaps."""
+    try:
+        return cached_cpcb()
+    except ValueError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+@app.get("/api/cpcb/latest")
+def get_cpcb_latest():
+    """Return latest file-backed CPCB station observations for fast ranking UI."""
+    try:
+        return cached_cpcb_latest()
+    except ValueError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
 @app.get("/api/explainability")
 def get_explainability():
     """Backward-compatible explanation endpoint using the Phase 2–4 engines."""
     return build_explanation(24)
+
+
+@app.get("/api/dashboard-summary")
+def get_dashboard_summary(
+    hours: int = Query(default=72, ge=1, le=73, description="Number of hourly forecast steps"),
+    hour: int = Query(default=24, ge=0, le=72, description="Forecast hour for current panels"),
+):
+    """Return all dashboard payloads in one request for faster frontend loading."""
+    return cached_dashboard_summary(hours, hour)
+
+
+@app.get("/api/map-data")
+def get_map_data(
+    hour: int = Query(default=24, ge=0, le=72, description="Forecast hour"),
+    variable: str = Query(default="pm25", description="Grid variable"),
+):
+    """Return all map payloads in one request for faster frontend loading."""
+    try:
+        return cached_map_data(hour, variable)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
 
 
 @app.get("/api/sources")

@@ -8,3 +8,7 @@ PyYAML
 
 fastapi
 uvicorn
+
+requests
+python-dotenv
+apscheduler

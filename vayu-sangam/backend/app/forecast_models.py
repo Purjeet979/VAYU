@@ -67,6 +67,9 @@ class DemoForecastModel(ForecastModel):
         self._weather = xr.open_dataset(self.paths.wind).load()
         if self._forecast.sizes.get("time") != self._weather.sizes.get("time"):
             raise ValueError("Demo forecast and weather files have incompatible time dimensions")
+        for dimension in ("lat", "lon"):
+            if self._forecast.sizes.get(dimension) != self._weather.sizes.get(dimension):
+                raise ValueError(f"Demo forecast and weather files have incompatible {dimension} dimensions")
 
     @property
     def max_horizon(self) -> int:
@@ -76,10 +79,17 @@ class DemoForecastModel(ForecastModel):
         if not isinstance(horizon, int) or not 1 <= horizon <= self.max_horizon:
             raise ValueError(f"horizon must be an integer between 1 and {self.max_horizon}")
         fraction = _scenario_fraction(features)
+        forecast = self._forecast.isel(time=slice(0, horizon)).copy(deep=True)
+        weather = self._weather.isel(time=slice(0, horizon)).copy(deep=True)
+        weather = weather.assign_coords(
+            time=forecast.time,
+            lat=forecast.lat,
+            lon=forecast.lon,
+        )
         result = xr.merge([
-            self._forecast.isel(time=slice(0, horizon)).copy(deep=True),
-            self._weather.isel(time=slice(0, horizon)).copy(deep=True),
-        ])
+            forecast,
+            weather,
+        ], join="exact")
         for variable, background in DEFAULT_SOURCE_BACKGROUNDS.items():
             if variable in result:
                 result[variable] = background + (result[variable] - background) * fraction

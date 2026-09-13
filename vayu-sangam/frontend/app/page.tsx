@@ -1,155 +1,83 @@
-"use client";
+import { ArrowRight, Map, ShieldAlert, Zap, Activity } from 'lucide-react';
+import Link from 'next/link';
 
-import React, { useState, useEffect } from 'react';
-import Map, { NavigationControl } from 'react-map-gl/maplibre';
-import 'maplibre-gl/dist/maplibre-gl.css';
-import { Wind, Thermometer, Flame, AlertTriangle, Layers, Map as MapIcon, Activity } from 'lucide-react';
+import CurrentAqiCard from './components/CurrentAqiCard';
 
-export default function Home() {
-  const [forecast, setForecast] = useState<any[]>([]);
-  const [explainability, setExplainability] = useState<any>(null);
-  
-  useEffect(() => {
-    // Fetch mock data from our FastAPI backend
-    fetch('http://localhost:8000/api/forecast/72-hours')
-      .then(res => res.json())
-      .then(data => setForecast(data.forecast))
-      .catch(err => console.error(err));
+const questions = [
+  { q: 'Is it safe outside right now?', href: '/dashboard', icon: ShieldAlert },
+  { q: 'When will air quality improve?', href: '/dashboard', icon: Activity },
+  { q: 'Where are the pollution hotspots?', href: '/map', icon: Map },
+  { q: "What's driving today's pollution?", href: '/dashboard', icon: Zap },
+];
 
-    fetch('http://localhost:8000/api/explainability')
-      .then(res => res.json())
-      .then(data => setExplainability(data))
-      .catch(err => console.error(err));
-  }, []);
+const steps = [
+  { step: 1, title: 'Live Data Ingestion', desc: 'Real-time assimilation of satellite imagery, CPCB sensors, and Open-Meteo weather grids.' },
+  { step: 2, title: 'WRF-Chem + ML', desc: 'Coupled physical modeling and XGBoost bias correction generating a 72-hour deterministic forecast.' },
+  { step: 3, title: 'Source Attribution', desc: 'Inversion trapping index and live wind-plume vectoring to pinpoint driving sources.' },
+  { step: 4, title: 'Actionable Guidance', desc: 'Transparent, explainable UI delivering data-backed insights for policy and public safety.' },
+];
 
-  const currentData = forecast.length > 0 ? forecast[0] : null;
-
+export default function LandingPage() {
   return (
-    <div className="flex h-screen bg-[#0b0e14] text-white font-sans overflow-hidden">
-      {/* Sidebar */}
-      <div className="w-80 bg-[#151a23] border-r border-gray-800 flex flex-col z-10 shadow-xl">
-        <div className="p-6 border-b border-gray-800">
-          <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-emerald-400 flex items-center gap-2">
-            <Wind className="w-6 h-6 text-blue-400" />
-            VayuSangam
-          </h1>
-          <p className="text-xs text-gray-400 mt-1">Physics-Informed AI AQI Dashboard</p>
+    <div className="flex flex-col items-center">
+      <section className="w-full max-w-6xl mx-auto px-6 py-20 md:py-24 flex flex-col items-center text-center">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-500/10 text-teal-400 text-sm font-medium mb-8 border border-teal-500/20">
+          <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
+          Live Forecasting Active
         </div>
-        
-        <div className="flex-1 overflow-y-auto p-4 space-y-6">
-          {/* Main Stats */}
-          {currentData && (
-            <div className="bg-[#1e2532] p-4 rounded-xl border border-gray-700/50 relative overflow-hidden group">
-              <div className="absolute top-0 right-0 w-24 h-24 bg-red-500/10 rounded-full blur-2xl -mr-10 -mt-10 transition-transform group-hover:scale-150"></div>
-              <h2 className="text-sm text-gray-400 font-medium mb-1 uppercase tracking-wider">Current AQI</h2>
-              <div className="flex items-end gap-3">
-                <span className="text-5xl font-black text-red-400">{currentData.aqi}</span>
-                <span className="text-red-400 font-semibold mb-1">SEVERE</span>
-              </div>
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                <div className="bg-[#151a23] p-2 rounded-lg">
-                  <div className="text-xs text-gray-400">PM2.5</div>
-                  <div className="font-semibold">{currentData.pm25.toFixed(1)}</div>
+
+        <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+          Predicting the Air <br /> We Breathe.
+        </h1>
+
+        <p className="text-lg md:text-xl text-gray-400 max-w-2xl mb-12">
+          VayuSangam is an advanced WRF-Chem and ML-powered intelligence platform delivering 72-hour coupled weather and pollution forecasting for Delhi NCR.
+        </p>
+
+        <div className="flex flex-col sm:flex-row gap-4">
+          <Link href="/dashboard" className="px-8 py-4 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-semibold transition-all flex items-center justify-center gap-2 hover:shadow-[0_0_20px_rgba(20,184,166,0.3)]">
+            Check current air <Activity className="w-5 h-5" />
+          </Link>
+          <Link href="/map" className="px-8 py-4 rounded-xl bg-gray-800 hover:bg-gray-700 text-white font-semibold transition-all flex items-center justify-center gap-2 border border-gray-700">
+            Explore live map <Map className="w-5 h-5" />
+          </Link>
+        </div>
+      </section>
+
+      <CurrentAqiCard />
+
+      <section className="w-full max-w-6xl mx-auto px-6 mb-32">
+        <h3 className="text-2xl font-bold mb-8 text-center">Start with your question</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {questions.map((item) => (
+            <Link key={item.q} href={item.href} className="group p-6 rounded-2xl bg-[#131821] border border-gray-800 hover:border-teal-500/50 transition-colors flex flex-col justify-between h-full">
+              <item.icon className="w-8 h-8 text-teal-500/70 mb-4 group-hover:text-teal-400 transition-colors" />
+              <div>
+                <h4 className="font-semibold text-lg group-hover:text-teal-50 transition-colors">{item.q}</h4>
+                <div className="flex items-center gap-2 mt-4 text-sm text-gray-500 group-hover:text-teal-400 transition-colors">
+                  View Data <ArrowRight className="w-4 h-4" />
                 </div>
-                <div className="bg-[#151a23] p-2 rounded-lg">
-                  <div className="text-xs text-gray-400">PM10</div>
-                  <div className="font-semibold">{currentData.pm10.toFixed(1)}</div>
-                </div>
               </div>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <section className="w-full max-w-6xl mx-auto px-6 mb-32">
+        <h3 className="text-2xl font-bold mb-12 text-center">How VayuSangam Works</h3>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 relative">
+          <div className="hidden md:block absolute top-8 left-12 right-12 h-0.5 bg-gray-800" />
+          {steps.map((item) => (
+            <div key={item.step} className="relative pt-8 md:pt-0">
+              <div className="w-16 h-16 rounded-2xl bg-[#131821] border-2 border-gray-800 flex items-center justify-center text-xl font-bold mb-6 relative z-10 mx-auto md:mx-0">
+                {item.step}
+              </div>
+              <h4 className="font-semibold text-lg mb-2 text-center md:text-left">{item.title}</h4>
+              <p className="text-gray-400 text-sm text-center md:text-left leading-relaxed">{item.desc}</p>
             </div>
-          )}
-
-          {/* Explainability Panel */}
-          {explainability && (
-            <div className="bg-[#1e2532] p-4 rounded-xl border border-gray-700/50">
-              <h2 className="text-sm text-gray-400 font-medium mb-3 uppercase tracking-wider flex items-center gap-2">
-                <Activity className="w-4 h-4" /> Primary Drivers
-              </h2>
-              <div className="space-y-3">
-                {explainability.primary_drivers.map((driver: any, idx: number) => (
-                  <div key={idx} className="flex justify-between items-center text-sm bg-[#151a23] p-2 rounded-lg">
-                    <span className="text-gray-300">{driver.factor}</span>
-                    <span className="text-red-400 font-bold">{driver.impact}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-3 text-xs text-gray-400 bg-red-500/10 p-2 rounded-lg border border-red-500/20">
-                {explainability.summary}
-              </div>
-            </div>
-          )}
-
-          {/* Plume & Inversion Panel */}
-          {currentData && (
-            <div className="space-y-4">
-              <div className="bg-[#1e2532] p-4 rounded-xl border border-gray-700/50">
-                <h2 className="text-sm text-gray-400 font-medium mb-3 uppercase tracking-wider flex items-center gap-2">
-                  <Layers className="w-4 h-4" /> Atmospheric State
-                </h2>
-                <div className="flex justify-between items-center text-sm mb-2">
-                  <span className="text-gray-400">PBL Height</span>
-                  <span className="font-mono">{currentData.pbl_height} m</span>
-                </div>
-                <div className="flex justify-between items-center text-sm mb-2">
-                  <span className="text-gray-400">Inversion Strength</span>
-                  <span className={`font-bold ${currentData.inversion_strength === 'SEVERE' ? 'text-red-400' : 'text-yellow-400'}`}>
-                    {currentData.inversion_strength}
-                  </span>
-                </div>
-              </div>
-
-              <div className="bg-[#1e2532] p-4 rounded-xl border border-gray-700/50">
-                <h2 className="text-sm text-gray-400 font-medium mb-3 uppercase tracking-wider flex items-center gap-2">
-                  <Flame className="w-4 h-4 text-orange-400" /> Stubble Plume
-                </h2>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-gray-400">Plume Influence</span>
-                  <span className="font-bold text-orange-400">{currentData.plume_influence ? "HIGH" : "LOW"}</span>
-                </div>
-              </div>
-            </div>
-          )}
+          ))}
         </div>
-      </div>
-
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col relative">
-        <div className="absolute top-4 left-4 z-10 flex gap-2">
-          <div className="bg-[#151a23]/90 backdrop-blur border border-gray-700 px-4 py-2 rounded-lg flex items-center gap-2 shadow-lg">
-            <MapIcon className="w-4 h-4 text-gray-400" />
-            <span className="text-sm font-medium">Delhi-NCR High-Resolution Domain</span>
-          </div>
-        </div>
-
-        {/* MapLibre Map */}
-        <div className="flex-1 bg-gray-900">
-          <Map
-            initialViewState={{
-              longitude: 77.2090,
-              latitude: 28.6139,
-              zoom: 8
-            }}
-            mapStyle="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
-          >
-            <NavigationControl position="bottom-right" />
-          </Map>
-        </div>
-
-        {/* 72 Hour Forecast Timeline Slider */}
-        <div className="h-32 bg-[#151a23] border-t border-gray-800 p-4">
-          <h3 className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2">72-Hour Forecast Timeline</h3>
-          <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
-            {forecast.map((f, i) => (
-              <div key={i} className="min-w-[80px] bg-[#1e2532] rounded-lg p-2 flex flex-col items-center justify-center border border-gray-700/50 hover:border-blue-500 cursor-pointer transition-colors">
-                <div className="text-[10px] text-gray-400">+{i}h</div>
-                <div className={`text-lg font-bold ${f.aqi > 400 ? 'text-red-500' : f.aqi > 300 ? 'text-red-400' : 'text-orange-400'}`}>
-                  {f.aqi}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      </section>
     </div>
   );
 }

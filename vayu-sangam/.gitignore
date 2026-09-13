@@ -1,6 +1,20 @@
+# VayuSangam-AI
 venv/
-node_modules/
 __pycache__/
 *.pyc
+.pytest_cache/
 .env
 .DS_Store
+*.log
+
+# Frontend (Next.js)
+frontend/.next/
+frontend/node_modules/
+frontend/out/
+frontend/build/
+
+# Backend (FastAPI)
+backend/data/live/*
+!backend/data/live/.gitkeep
+backend/data/cache/*
+!backend/data/cache/.gitkeep

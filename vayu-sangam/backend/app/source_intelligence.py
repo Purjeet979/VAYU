@@ -199,6 +199,28 @@ class SourceIntelligenceService:
                 }
             )
 
+        if not clusters and not self.fires.empty:
+            # Sparse live fire feeds may not satisfy DBSCAN's min_samples threshold.
+            # Keep the map useful by surfacing each fire as a single-source marker.
+            for index, row in self.fires.reset_index(drop=True).iterrows():
+                centroid_lat = float(row.lat)
+                centroid_lon = float(row.lon)
+                frp = float(row.frp)
+                confidence = float(row.confidence)
+                clusters.append(
+                    {
+                        "cluster_id": index + 1,
+                        "centroid": {"lat": centroid_lat, "lon": centroid_lon},
+                        "fire_count": 1,
+                        "frp_sum": frp,
+                        "frp_mean": frp,
+                        "frp_max": frp,
+                        "mean_confidence": confidence,
+                        "hcho_anomaly": self._nearest_hcho_anomaly(centroid_lat, centroid_lon),
+                        "source_type": "single_fire",
+                    }
+                )
+
         max_frp = max((cluster["frp_sum"] for cluster in clusters), default=1.0)
         weights = self.config.get("score_weights", {})
         for cluster in clusters:
@@ -257,7 +279,7 @@ class SourceIntelligenceService:
             )
 
         clusters.sort(key=lambda cluster: cluster["source_score"], reverse=True)
-        noise_count = int(sum(label == -1 for label in labels))
+        noise_count = 0 if clusters and all(cluster.get("source_type") == "single_fire" for cluster in clusters) else int(sum(label == -1 for label in labels))
         timestamp = pd.Timestamp(self.wind.time.values[hour]).isoformat()
         return {
             "mode": "demo",
