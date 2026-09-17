@@ -179,11 +179,7 @@ def main():
                 break
             else:
                 metric["error"] = "No valid records" if not valid_records else f"Too few records ({len(valid_records)} < 15)"
-                metric["latency"] = time.time() - start_time
-                log_metrics.append(metric)
                 logger.warning(f"{source.name} returned {len(valid_records)} records, considered failed.")
-                metric["error"] = "No valid fresh records found."
-                logger.warning(f"{source.name} returned 0 valid fresh records.")
                 
         except Exception as e:
             metric["error"] = str(e)
@@ -195,7 +191,26 @@ def main():
     write_ingestion_log(log_metrics)
 
     if not final_records:
-        logger.error("All fetch attempts (Primary + Fallbacks + LKG) failed. Exiting.")
+        # All sources failed — write a degraded meta so the API can surface a stale warning
+        old_meta = {}
+        if META_FILE.exists():
+            try:
+                with open(META_FILE) as f:
+                    old_meta = json.load(f)
+            except Exception:
+                pass
+        degraded_meta = {
+            "last_successful_fetch_utc": old_meta.get("last_successful_fetch_utc"),
+            "source": "none",
+            "row_count": 0,
+            "quality": "degraded",
+            "confidence": "none",
+            "data_confidence": "Low (all sources degraded — CPCB, OpenAQ, WAQI all failed)",
+            "all_sources_failed_at": datetime.now(timezone.utc).isoformat(),
+        }
+        with open(META_FILE, "w") as f:
+            json.dump(degraded_meta, f)
+        logger.error("All fetch attempts failed. Meta written with degraded status.")
         sys.exit(1)
 
     final_df = map_stations(final_records, lookup_df)
@@ -235,7 +250,8 @@ def main():
         "row_count": len(final_df),
         "quality": final_records[0].get("quality", "unknown"),
         "confidence": final_records[0].get("confidence", "unknown"),
-        "source_breakdown": {source_used: len(final_df)}
+        "source_breakdown": {source_used: len(final_df)},
+        "data_confidence": "Low (LKG stale fallback \u2014 all live sources failed)" if source_used == "LKG" else "High",
     }
     with open(META_FILE, "w") as f:
         json.dump(meta, f)

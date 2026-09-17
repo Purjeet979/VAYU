@@ -16,8 +16,8 @@ export default function StationRankingTable({ isEmbedded = false }: { isEmbedded
   const [selectedCity, setSelectedCity] = useState<string>('All');
 
   useEffect(() => {
-    fetchJson<any[]>('/api/cpcb/latest')
-      .then(d => setData(d))
+    fetchJson<any>('/api/cpcb/latest')
+      .then(d => setData(Array.isArray(d) ? d : (d?.Data ?? [])))
       .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, []);

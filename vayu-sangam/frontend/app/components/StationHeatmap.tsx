@@ -14,8 +14,8 @@ export default function StationHeatmap() {
   const [selectedCity, setSelectedCity] = useState<string>('All');
 
   useEffect(() => {
-    fetchJson<any[]>('/api/cpcb')
-      .then(d => setData(d))
+    fetchJson<any>('/api/cpcb')
+      .then(d => setData(Array.isArray(d) ? d : (d?.Data ?? [])))
       .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, []);

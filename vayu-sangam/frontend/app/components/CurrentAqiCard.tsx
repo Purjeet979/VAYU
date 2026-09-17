@@ -19,9 +19,10 @@ export default function CurrentAqiCard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchJson<Array<{ aqi?: number }>>('/api/cpcb/latest', { timeoutMs: 2500 })
+    fetchJson<any>('/api/cpcb/latest', { timeoutMs: 2500 })
       .then(data => {
-        const values = data.map(row => row.aqi).filter((aqi): aqi is number => typeof aqi === 'number');
+        const rows: Array<{ aqi?: number }> = Array.isArray(data) ? data : (data?.Data ?? []);
+        const values = rows.map(row => row.aqi).filter((aqi): aqi is number => typeof aqi === 'number');
         if (values.length === 0) {
           setCurrentAQI(null);
           return;

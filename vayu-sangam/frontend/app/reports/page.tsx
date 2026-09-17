@@ -129,6 +129,7 @@ function SearchableDropdown({ value, options, onChange, placeholder, disabled = 
 
 export default function ReportsPage() {
   const [data, setData] = useState<any[]>([]);
+  const [staleWarning, setStaleWarning] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   
@@ -136,8 +137,13 @@ export default function ReportsPage() {
   const [city2, setCity2] = useState<string>('None');
 
   useEffect(() => {
-    fetchJson<any[]>('/api/cpcb/latest')
-      .then(d => setData(d))
+    fetchJson<any>('/api/cpcb/latest')
+      .then(d => {
+        // Handle both old plain-array and new wrapped response
+        const rows = Array.isArray(d) ? d : (d?.Data ?? []);
+        setData(rows);
+        if (d?.stale_warning) setStaleWarning(d.stale_warning);
+      })
       .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, []);
@@ -163,7 +169,7 @@ export default function ReportsPage() {
       if (typeof row.pm10 === 'number' && row.pm10 > 0) cityMap[city].pm10Vals.push(row.pm10);
       if (typeof row.no2 === 'number' && row.no2 > 0) cityMap[city].no2Vals.push(row.no2);
       
-      if ((row.aqi || 0) > cityMap[city].maxAqi) {
+      if (typeof row.aqi === 'number' && row.aqi > cityMap[city].maxAqi) {
         cityMap[city].maxAqi = row.aqi!;
         cityMap[city].maxAqiStation = row.station_name || 'Unknown';
       }
@@ -188,7 +194,7 @@ export default function ReportsPage() {
 
   const getCityDetails = (cityName: string) => {
     if (!data || cityName === 'Overview' || cityName === 'None') return null;
-    const stations = data.filter(d => d.city === cityName).sort((a, b) => (b.aqi || 0) - (a.aqi || 0));
+    const stations = data.filter(d => d.city === cityName).sort((a, b) => (typeof b.aqi === 'number' ? b.aqi : 0) - (typeof a.aqi === 'number' ? a.aqi : 0));
     const stats = cityStats.find(c => c.city === cityName);
     return { stations, stats };
   };
@@ -214,6 +220,12 @@ export default function ReportsPage() {
 
   return (
     <div className="flex-1 w-full py-8 px-6 max-w-7xl mx-auto flex flex-col gap-8">
+      {staleWarning && (
+        <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 text-sm">
+          <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+          <div><span className="font-bold">Data Quality Warning: </span>{staleWarning}</div>
+        </div>
+      )}
       {/* HEADER & CONTROLS */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>

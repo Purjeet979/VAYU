@@ -1,4 +1,6 @@
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -163,7 +165,7 @@ def get_map_layers():
 def get_cpcb():
     """Return file-backed CPCB station observations for rankings and heatmaps."""
     try:
-        return cached_cpcb()
+        return _cpcb_response(cached_cpcb())
     except ValueError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
 
@@ -172,9 +174,32 @@ def get_cpcb():
 def get_cpcb_latest():
     """Return latest file-backed CPCB station observations for fast ranking UI."""
     try:
-        return cached_cpcb_latest()
+        data = cached_cpcb_latest()
+        return _cpcb_response(data)
     except ValueError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+def _cpcb_response(data: list) -> dict:
+    """Wrap station list with metadata from the fetcher's meta file."""
+    _meta_path = Path(__file__).resolve().parents[2] / "backend" / "data" / "live" / "fetch_cpcb.meta.json"
+    meta = {}
+    if _meta_path.exists():
+        try:
+            meta = json.loads(_meta_path.read_text())
+        except Exception:
+            pass
+    data_confidence = meta.get("data_confidence", "High")
+    stale_warning = None
+    if data_confidence != "High":
+        last_ok = meta.get("last_successful_fetch_utc", "unknown")
+        stale_warning = f"{data_confidence}. Last successful full fetch: {last_ok}"
+    return {
+        "Data": data,
+        "Count": len(data),
+        "data_confidence": data_confidence,
+        "stale_warning": stale_warning,
+    }
 
 @app.get("/api/explainability")
 def get_explainability():
