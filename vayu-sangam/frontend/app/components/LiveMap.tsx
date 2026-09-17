@@ -60,17 +60,18 @@ type InversionResponse = {
 };
 
 function colorForPm25(value: number | null | undefined) {
-  if (value === null || value === undefined) return '#4b5563'; // Gray for no-data
-  if (value > 250) return '#9333ea'; // Severe
-  if (value > 120) return '#ef4444'; // Very Poor
-  if (value > 90) return '#f97316';  // Poor
-  if (value > 60) return '#eab308';  // Moderate
-  if (value > 30) return '#84cc16';  // Satisfactory
-  return '#22c55e'; // Good
+  if (value === null || value === undefined) return '#4b5563';
+  if (value > 250) return '#9333ea';
+  if (value > 120) return '#ef4444';
+  if (value > 90) return '#f97316';
+  if (value > 60) return '#eab308';
+  if (value > 30) return '#84cc16';
+  return '#22c55e';
 }
+
 function colorForPblh(value: number | null | undefined) {
-  if (value === null || value === undefined) return '#4b5563'; // Gray for no-data
-  if (value < 200) return '#dc2626'; // Severe trapping
+  if (value === null || value === undefined) return '#4b5563';
+  if (value < 200) return '#dc2626';
   if (value < 500) return '#ea580c';
   if (value < 1000) return '#ca8a04';
   return '#16a34a';
@@ -85,7 +86,6 @@ function colorForAqi(value: number | null | undefined): string {
   if (value > 50)  return '#84cc16';
   return '#22c55e';
 }
-
 function MapController({ searchedLocation, onZoomOut, setMapInstance }: { searchedLocation: [number, number] | null, onZoomOut: () => void, setMapInstance: (m: any) => void }) {
   const map = useMap();
   
@@ -94,11 +94,11 @@ function MapController({ searchedLocation, onZoomOut, setMapInstance }: { search
   }, [map, setMapInstance]);
 
   useMapEvent('zoomend', () => {
-    if (map.getZoom() < 9) onZoomOut(); // Lowered threshold to prevent race condition on large districts
+    if (map.getZoom() < 9) setTimeout(() => onZoomOut(), 0); // Defer state update to avoid Leaflet race conditions
   });
   
   useMapEvent('click', () => {
-    onZoomOut(); // Clear selection if user clicks on empty map background
+    setTimeout(() => onZoomOut(), 0); // Clear selection if user clicks on empty map background
   });
 
   useEffect(() => { 
@@ -401,7 +401,7 @@ export default function LiveMap() {
                 fillColor: colorForPm25(pt.value), fillOpacity: 0.7,
                 className: 'transition-opacity duration-500 ease-in-out'
               }} eventHandlers={{ click: (e: any) => e.originalEvent?.stopPropagation() }}>
-                <Popup>Grid PM2.5: {pt.value.toFixed(1)} µg/m³</Popup>
+                <Popup>Grid PM2.5: {pt.value != null ? pt.value.toFixed(1) : 'No Data'} µg/m³</Popup>
               </CircleMarker>
             ))}
             {layers.aqi && selectedDistrictMesh.aqi.map((pt, i) => (
@@ -419,7 +419,7 @@ export default function LiveMap() {
                 fillColor: colorForPblh(pt.value), fillOpacity: 0.8,
                 className: 'transition-opacity duration-500 ease-in-out'
               }} eventHandlers={{ click: (e: any) => e.originalEvent?.stopPropagation() }}>
-                <Popup>Grid PBLH: {pt.value.toFixed(0)} m</Popup>
+                <Popup>Grid PBLH: {pt.value != null ? pt.value.toFixed(0) : 'No Data'} m</Popup>
               </CircleMarker>
             ))}
           </>
@@ -431,7 +431,7 @@ export default function LiveMap() {
           </CircleMarker>
         ))}
 
-        {layers.hcho && sources.filter(s => (s.hcho_anomaly ?? 0) > 0).map(source => (
+        {layers.hcho && sources.filter(s => s.hcho_anomaly != null && s.hcho_anomaly > 0).map(source => (
           <CircleMarker key={`hcho-${source.cluster_id}`} center={[source.centroid.lat - 0.04, source.centroid.lon + 0.04]} radius={10} pathOptions={{ color: '#fdf4ff', fillColor: '#d946ef', fillOpacity: 0.7, weight: 1 }} eventHandlers={{ click: (e: any) => e.originalEvent?.stopPropagation() }}>
             <Popup>HCHO Anomaly: {source.hcho_anomaly?.toFixed(2)}</Popup>
           </CircleMarker>
@@ -439,7 +439,7 @@ export default function LiveMap() {
         
         {layers.stubble && stubbleFeatures.map((feat, i) => (
           <CircleMarker key={`stubble-${i}`} center={[feat.geometry.coordinates[1], feat.geometry.coordinates[0]]} radius={15 * (feat.properties.stubble_intensity_score || 0.1)} pathOptions={{ color: '#fef08a', fillColor: '#eab308', fillOpacity: 0.8, weight: 2 }} eventHandlers={{ click: (e: any) => e.originalEvent?.stopPropagation() }}>
-            <Popup>Stubble Intensity: {(feat.properties.stubble_intensity_score ?? 0).toFixed(2)}</Popup>
+            <Popup>Stubble Intensity: {feat.properties.stubble_intensity_score != null ? feat.properties.stubble_intensity_score.toFixed(2) : 'No Data'}</Popup>
           </CircleMarker>
         ))}
       </MapContainer>
