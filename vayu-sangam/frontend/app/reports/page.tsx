@@ -142,6 +142,7 @@ export default function ReportsPage() {
         // Handle both old plain-array and new wrapped response
         const rows = Array.isArray(d) ? d : (d?.Data ?? []);
         setData(rows);
+        // Prefer the actionable stale_warning from backend; it already names missing cities
         if (d?.stale_warning) setStaleWarning(d.stale_warning);
       })
       .catch(() => setError(true))

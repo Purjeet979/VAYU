@@ -189,15 +189,25 @@ def _cpcb_response(data: list) -> dict:
             meta = json.loads(_meta_path.read_text())
         except Exception:
             pass
-    data_confidence = meta.get("data_confidence", "High")
+    data_confidence = meta.get("data_confidence", "Unknown")
+    cities_covered = meta.get("cities_covered", [])
+    cities_missing = meta.get("cities_missing", [])
     stale_warning = None
     if data_confidence != "High":
-        last_ok = meta.get("last_successful_fetch_utc", "unknown")
-        stale_warning = f"{data_confidence}. Last successful full fetch: {last_ok}"
+        if cities_missing:
+            stale_warning = (
+                f"Data available for {', '.join(cities_covered) or 'unknown'} only. "
+                f"NCR satellite cities currently unavailable: {', '.join(cities_missing)}."
+            )
+        else:
+            last_ok = meta.get("last_successful_fetch_utc", "unknown")
+            stale_warning = f"{data_confidence}. Last successful full fetch: {last_ok}"
     return {
         "Data": data,
         "Count": len(data),
         "data_confidence": data_confidence,
+        "cities_covered": cities_covered,
+        "cities_missing": cities_missing,
         "stale_warning": stale_warning,
     }
 

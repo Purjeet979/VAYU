@@ -244,14 +244,29 @@ def main():
     except:
         fetch_utc = datetime.now(timezone.utc).isoformat()
         
+    NCR_EXPECTED = {"Delhi", "Gurugram", "Noida", "Ghaziabad", "Faridabad", "Greater Noida"}
+    covered = set(str(r.get("city", "")).strip() for r in final_records if r.get("city"))
+    covered = {c for c in covered if c}  # drop empty strings
+    missing = NCR_EXPECTED - covered
+    cities_present = len(covered)
+    if source_used == "LKG":
+        data_confidence = "Low (LKG stale fallback \u2014 all live sources failed)"
+    elif missing and cities_present < 4:
+        missing_str = ", ".join(sorted(missing))
+        data_confidence = f"Partial Coverage \u2014 data available for: {', '.join(sorted(covered))}; missing: {missing_str}"
+    else:
+        data_confidence = "High"
+
     meta = {
         "last_successful_fetch_utc": fetch_utc,
         "source": source_used,
         "row_count": len(final_df),
+        "cities_covered": sorted(covered),
+        "cities_missing": sorted(missing),
         "quality": final_records[0].get("quality", "unknown"),
         "confidence": final_records[0].get("confidence", "unknown"),
         "source_breakdown": {source_used: len(final_df)},
-        "data_confidence": "Low (LKG stale fallback \u2014 all live sources failed)" if source_used == "LKG" else "High",
+        "data_confidence": data_confidence,
     }
     with open(META_FILE, "w") as f:
         json.dump(meta, f)
