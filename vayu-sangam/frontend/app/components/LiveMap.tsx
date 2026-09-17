@@ -26,6 +26,7 @@ type SourcePoint = {
 };
 
 type NowcastResponse = {
+  fallback?: boolean;
   grid: {
     lats: number[];
     lons: number[];
@@ -34,6 +35,7 @@ type NowcastResponse = {
     pm25: (number | null)[][];
     aqi: (number | null)[][];
   };
+  meta?: { is_live?: boolean; note?: string };
 };
 
 type StubbleFeature = {
@@ -149,6 +151,9 @@ export default function LiveMap() {
       if (nowcast?.grid && nowcast.layers) {
         setGrid({ lat: nowcast.grid.lats, lon: nowcast.grid.lons, values: nowcast.layers.pm25 });
         setAqiGrid({ lat: nowcast.grid.lats, lon: nowcast.grid.lons, values: nowcast.layers.aqi });
+        if (nowcast.fallback || nowcast.meta?.is_live === false) {
+          setDataError('Live refresh unavailable. Showing the latest saved map data.');
+        }
       } else {
         setGrid(null);
         setAqiGrid(null);

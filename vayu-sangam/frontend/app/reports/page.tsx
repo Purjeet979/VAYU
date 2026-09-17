@@ -149,9 +149,9 @@ export default function ReportsPage() {
 
   useEffect(() => {
     Promise.all([
-      fetchJson<any>('/api/cpcb/latest'),
-      fetchJson<GridData>('/api/nowcast').catch(() => null),
-      fetch('/ncr_districts.geojson').then(r => r.json()).catch(() => null)
+      fetchJson<any>('/api/cpcb/latest', { timeoutMs: 4000 }).catch(() => null),
+      fetchJson<GridData>('/api/nowcast', { timeoutMs: 5000 }).catch(() => null),
+      fetch('/ncr_districts.geojson', { cache: 'force-cache' }).then(r => r.json()).catch(() => null)
     ])
       .then(([d, g, geo]) => {
         const rows = Array.isArray(d) ? d : (d?.Data ?? []);
@@ -159,8 +159,8 @@ export default function ReportsPage() {
         setGridData(g);
         setGeoData(geo);
         if (d?.stale_warning) setStaleWarning(d.stale_warning);
+        if (!rows.length) setError(true);
       })
-      .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, []);
 

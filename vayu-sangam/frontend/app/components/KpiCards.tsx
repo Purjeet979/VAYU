@@ -6,14 +6,15 @@ import { Activity, CloudFog, Zap } from 'lucide-react';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export default function KpiCards({ forecast }: { forecast: any[] }) {
+export default function KpiCards({ forecast, hour = 0 }: { forecast: any[]; hour?: number }) {
   const metrics = useMemo(() => {
     if (!forecast || forecast.length === 0) return null;
 
     let pm25Sum = 0;
     let pm25Count = 0;
     let maxO3 = 0;
-    const currentAqi = forecast[0].aqi;
+    const selected = forecast[Math.min(Math.max(hour, 0), forecast.length - 1)] ?? forecast[0];
+    const currentAqi = selected.aqi;
     
     const pm25Sparkline: { value: number | null }[] = [];
     const o3Sparkline: { value: number | null }[] = [];
@@ -23,21 +24,22 @@ export default function KpiCards({ forecast }: { forecast: any[] }) {
         pm25Sum += f.pm25_ug_m3;
         pm25Count++;
       }
-      if (f.o3_ppb != null && f.o3_ppb > maxO3) maxO3 = f.o3_ppb;
+      const ozone = f.o3_ppb ?? f.o3_ug_m3;
+      if (ozone != null && ozone > maxO3) maxO3 = ozone;
       
       pm25Sparkline.push({ value: f.pm25_ug_m3 ?? null });
-      o3Sparkline.push({ value: f.o3_ppb ?? null });
+      o3Sparkline.push({ value: ozone ?? null });
     });
 
     return {
       currentAqi: currentAqi != null ? Math.round(currentAqi) : null,
       avgPm25: pm25Count > 0 ? Math.round(pm25Sum / pm25Count) : null,
-      currentO3: forecast[0].o3_ppb != null ? Math.round(forecast[0].o3_ppb) : null,
+      currentO3: (selected.o3_ppb ?? selected.o3_ug_m3) != null ? Math.round(selected.o3_ppb ?? selected.o3_ug_m3) : null,
       maxO3: Math.round(maxO3),
       pm25Sparkline,
       o3Sparkline
     };
-  }, [forecast]);
+  }, [forecast, hour]);
 
   const getAqiCategory = (aqi: number | null) => {
     if (aqi == null) return { label: 'No Data', color: 'text-gray-500' };

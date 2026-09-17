@@ -5,6 +5,8 @@ import { Wind } from 'lucide-react';
 
 import { fetchJson } from '../lib/api';
 
+type CpcbResponse = { Data?: Array<{ aqi?: number }> } | Array<{ aqi?: number }>;
+
 function aqiColor(aqi: number) {
   if (aqi <= 50) return 'text-green-400';
   if (aqi <= 100) return 'text-lime-400';
@@ -19,7 +21,7 @@ export default function CurrentAqiCard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchJson<any>('/api/cpcb/latest', { timeoutMs: 2500 })
+    fetchJson<CpcbResponse>('/api/cpcb/latest', { timeoutMs: 2500 })
       .then(data => {
         const rows: Array<{ aqi?: number }> = Array.isArray(data) ? data : (data?.Data ?? []);
         const values = rows.map(row => row.aqi).filter((aqi): aqi is number => typeof aqi === 'number');

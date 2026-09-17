@@ -4,10 +4,13 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .env
+.env.local
 .DS_Store
 *.log
 kaggle.json
 reference-node-*.json
+*.sqlite3
+*.db
 
 # Frontend (Next.js)
 frontend/.next/

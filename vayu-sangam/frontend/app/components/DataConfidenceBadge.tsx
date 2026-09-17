@@ -10,7 +10,7 @@ export default function DataConfidenceBadge() {
   const [confidence, setConfidence] = useState<string>("Loading...");
 
   useEffect(() => {
-    fetchJson<DataConfidenceResponse>('/api/data_confidence').then(data => {
+    fetchJson<DataConfidenceResponse>('/api/data_confidence', { timeoutMs: 2000 }).then(data => {
       if (data?.data_confidence) setConfidence(data.data_confidence);
     }).catch(() => setConfidence("Unknown"));
   }, []);

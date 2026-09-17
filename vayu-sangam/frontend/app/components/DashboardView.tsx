@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { Activity, AlertTriangle, AlertCircle, Cpu, Layers, Lightbulb, ShieldAlert, TrendingDown, TrendingUp, Wind } from 'lucide-react';
-import { CartesianGrid, Legend, Line, ComposedChart, Area, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Activity, AlertTriangle, Cpu, Layers, Lightbulb, ShieldAlert, TrendingDown, TrendingUp, Wind } from 'lucide-react';
+import { CartesianGrid, Legend, Line, ComposedChart, Area, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine } from 'recharts';
 
 import CorrelationMatrix from './CorrelationMatrix';
 import DataConfidenceBadge from './DataConfidenceBadge';
@@ -17,6 +17,8 @@ import { fetchJson } from '../lib/api';
 type ForecastPoint = {
   timestamp: string;
   aqi: number;
+  aqi_lower?: number | null;
+  aqi_upper?: number | null;
   pm25_ug_m3?: number | null;
   pm10_ug_m3?: number | null;
   no2_ug_m3?: number | null;
@@ -63,8 +65,10 @@ type Explanation = {
 };
 
 type DashboardSummary = {
+  fallback?: boolean;
   forecast?: {
     forecast?: ForecastPoint[];
+    fallback?: boolean;
     confidence?: string;
     note?: string;
     scientific_status?: string;
@@ -98,17 +102,19 @@ export default function DashboardView() {
   const [hour, setHour] = useState(24);
   const [selectedPollutant, setSelectedPollutant] = useState("pm25");
   const [showSecondaryPanels, setShowSecondaryPanels] = useState(false);
+  const [usingBackup, setUsingBackup] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setDataError(null);
 
-    fetchJson<DashboardSummary>(`/api/dashboard-summary?hours=72&hour=${hour}`, { timeoutMs: 20000 })
+    fetchJson<DashboardSummary>(`/api/dashboard-summary?hours=72&hour=${hour}`, { timeoutMs: 8000 })
       .then((data) => {
         if (cancelled) return;
 
         const nextForecast = data?.forecast?.forecast ?? [];
+        setUsingBackup(Boolean(data?.fallback || data?.forecast?.fallback));
         setForecast(nextForecast);
         setConfidence(data?.forecast?.confidence ?? null);
         setScientificStatus(data?.forecast?.scientific_status ?? null);
@@ -165,13 +171,18 @@ export default function DashboardView() {
         </div>
       ) : (
         <div className="flex flex-col h-full gap-6">
+          {usingBackup && !dataError && (
+            <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-3 text-sm text-yellow-200">
+              Live refresh is temporarily unavailable. Showing the latest saved forecast so the dashboard remains useful.
+            </div>
+          )}
           {dataError && (
             <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-200">
               {dataError}
             </div>
           )}
 
-          <KpiCards forecast={forecast} />
+          <KpiCards forecast={forecast} hour={hour} />
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
@@ -256,8 +267,15 @@ export default function DashboardView() {
                         }}
                       />
                       <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                      <Area yAxisId="left" type="monotone" dataKey={(data) => [data.aqi_lower, data.aqi_upper]} fill="#ef4444" stroke="none" fillOpacity={0.15} name="AQI Uncertainty" />
+                      {forecast.some(point => typeof point.aqi_lower === 'number' && typeof point.aqi_upper === 'number') && (
+                        <Area yAxisId="left" type="monotone" dataKey={(data) => (
+                          typeof data.aqi_lower === 'number' && typeof data.aqi_upper === 'number'
+                            ? [data.aqi_lower, data.aqi_upper]
+                            : undefined
+                        )} fill="#ef4444" stroke="none" fillOpacity={0.15} name="AQI Uncertainty" />
+                      )}
                       <Line yAxisId="left" type="monotone" dataKey="aqi" name="AQI" stroke="#ef4444" strokeWidth={3} dot={false} activeDot={{ r: 6 }} />
+                      {forecast[hour]?.timestamp && <ReferenceLine x={forecast[hour].timestamp} stroke="#14b8a6" strokeDasharray="4 4" label={{ value: `T+${hour}`, fill: '#14b8a6', fontSize: 11 }} />}
                       
                       {selectedPollutant === 'pm25' && <Line yAxisId="left" type="monotone" dataKey="pm25_ug_m3" name="PM2.5" stroke="#f97316" strokeWidth={2} dot={false} />}
                       {selectedPollutant === 'pm10' && <Line yAxisId="left" type="monotone" dataKey="pm10_ug_m3" name="PM10" stroke="#f97316" strokeWidth={2} dot={false} />}
@@ -350,13 +368,13 @@ export default function DashboardView() {
                 <div className="flex flex-col gap-3">
                   {explanation.top_drivers?.slice(0, 3).map((driver, idx) => {
                     const feat = driver.feature?.toLowerCase() || '';
-                    if (feat.includes('pbl') || feat.includes('wind')) return <div key={idx} className="text-lg font-bold text-blue-400">🌫️ Mausam (Hawa band hai)</div>;
-                    if (feat.includes('fire') || feat.includes('stubble')) return <div key={idx} className="text-lg font-bold text-red-400">🔥 Parali (Dhuaa idhar aa raha hai)</div>;
-                    if (feat.includes('pm25_lag')) return <div key={idx} className="text-lg font-bold text-orange-400">🚗 Local Pollution (Traffic/Dust)</div>;
-                    return <div key={idx} className="text-lg font-bold text-gray-400">❓ Anya kaaran</div>;
+                    if (feat.includes('pbl') || feat.includes('wind')) return <div key={idx} className="text-lg font-bold text-blue-600 dark:text-blue-400">🌫️ Mausam (Hawa band hai)</div>;
+                    if (feat.includes('fire') || feat.includes('stubble')) return <div key={idx} className="text-lg font-bold text-red-600 dark:text-red-400">🔥 Parali (Dhuaa idhar aa raha hai)</div>;
+                    if (feat.includes('pm25_lag')) return <div key={idx} className="text-lg font-bold text-orange-600 dark:text-orange-400">🚗 Local Pollution (Traffic/Dust)</div>;
+                    return <div key={idx} className="text-lg font-bold text-gray-700 dark:text-gray-400">❓ Anya kaaran</div>;
                   })}
                   {!explanation.top_drivers?.length && explanation.primary_drivers?.map((driver, idx) => (
-                    <div key={idx} className="text-lg font-bold text-gray-300">
+                    <div key={idx} className="text-lg font-bold text-gray-700 dark:text-gray-300">
                       {driver.factor?.includes('trapping') ? '🌫️ Mausam (Hawa band hai)' : 
                        driver.factor?.includes('source cluster') ? '🔥 Parali (Dhuaa idhar aa raha hai)' :
                        driver.factor?.includes('Demo') ? '🚗 Local Pollution' : '❓ Anya kaaran'}
@@ -401,10 +419,14 @@ export default function DashboardView() {
                   ) : explanation.primary_drivers?.length ? (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                       {explanation.primary_drivers.map((driver, idx) => (
-                        <div key={idx} className="p-4 rounded-xl bg-background border border-panelBorder shadow-sm flex flex-col gap-1">
+                        <div key={idx} className="p-4 rounded-xl bg-background border border-panelBorder shadow-sm flex flex-col gap-2">
                           <p className="font-bold text-foreground text-sm">{driver.factor}</p>
                           <p className="text-xs text-cyan-400 mt-1">{driver.evidence}</p>
                           <p className="text-xs text-gray-500 italic mt-1">{driver.mechanism}</p>
+                          <div className="mt-2 h-1.5 w-full rounded-full bg-gray-800 overflow-hidden" title="Relative priority from transparent rules">
+                            <div className="h-full rounded-full bg-cyan-500" style={{ width: `${Math.max(35, 100 - idx * 25)}%` }} />
+                          </div>
+                          <span className="text-[10px] text-gray-500">Relative rule priority</span>
                         </div>
                       ))}
                     </div>

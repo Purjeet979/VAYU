@@ -5,6 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 import threading
 from typing import Any
+from copy import deepcopy
 
 import numpy as np
 import pandas as pd
@@ -148,21 +149,36 @@ def _validate_cache_staleness(data: dict[str, Any] | None, max_hours: int = 6) -
         return None
 
 def _handle_missing_cache() -> dict[str, Any]:
-    # THIS PRESERVES THE HONEST DYNAMIC FALLBACK FOR THE FRONTEND
+    # A missing/expired live cache must never turn the UI into an empty page.
     count_data = get_history_count()
-    if count_data["status"] != "sufficient":
-        return {
-            "mode": DATA_MODE,
-            "data_source": "bundled_demo_dataset",
-            "scientific_status": f"insufficient_data: {count_data['valid_observations']}/{count_data['required_observations']} hours collected.",
-            "forecast": [] # Empty to signal UI gracefully
-        }
     return {
         "mode": DATA_MODE,
-        "data_source": "system_failure",
-        "scientific_status": "Forecast unavailable (background generation failed or cache expired).",
-        "forecast": []
+        "data_source": "bundled_demo_dataset",
+        "fallback": True,
+        "confidence": "low",
+        "scientific_status": (
+            f"Demo backup is shown because live data is unavailable "
+            f"({count_data.get('valid_observations', 0)}/{count_data.get('required_observations', 0)} history hours)."
+        ),
+        "forecast": [],
     }
+
+
+def _mark_cached_fallback(data: dict[str, Any], reason: str) -> dict[str, Any]:
+    """Keep usable historical data visible while clearly labelling its age."""
+    result = deepcopy(data)
+    result["fallback"] = True
+    result["data_source"] = "cached_backup"
+    result["confidence"] = "low"
+    result["scientific_status"] = f"Cached backup shown: {reason}"
+    result["note"] = "Live refresh failed. Values come from the latest available local backup."
+    if isinstance(result.get("forecast"), dict):
+        result["forecast"]["fallback"] = True
+        result["forecast"]["data_source"] = "cached_backup"
+        result["forecast"]["confidence"] = "low"
+        result["forecast"]["scientific_status"] = result["scientific_status"]
+        result["forecast"]["note"] = result["note"]
+    return result
 
 def _compute_forecast(hours: int, stubble_fraction: float = 1.0) -> dict[str, Any]:
     from backend.app.live_inference import get_live_forecast_data
@@ -200,11 +216,20 @@ def cached_forecast(hours: int, stubble_fraction: float = 1.0) -> dict[str, Any]
     """Reads the background-generated dashboard cache."""
     data = _get_cache_json("dashboard.json")
     valid_data = _validate_cache_staleness(data)
-    
-    if not valid_data:
-        return _handle_missing_cache()
-        
-    forecast_data = valid_data.get("forecast", {})
+
+    # Prefer fresh cache, then stale cache, then the bundled model.  Never expose
+    # an empty forecast merely because a refresh job missed its SLA.
+    forecast_data = valid_data or (deepcopy(data) if data else None)
+    if forecast_data is None:
+        try:
+            return _compute_forecast(hours, stubble_fraction)
+        except Exception:
+            return _handle_missing_cache()
+    if valid_data is None:
+        forecast_data = _mark_cached_fallback(forecast_data, "live refresh is delayed")
+
+    forecast_data = deepcopy(forecast_data)
+    forecast_data = forecast_data.get("forecast", forecast_data)
     if "forecast" in forecast_data:
         forecast_data["forecast"] = forecast_data["forecast"][:hours]
         
@@ -398,17 +423,22 @@ def cached_dashboard_summary(hours: int = 72, hour: int = 24) -> dict[str, Any]:
     data = _get_cache_json("dashboard.json")
     valid_data = _validate_cache_staleness(data)
     
-    if not valid_data:
-        # Fallback to returning the missing cache structure (empty but explicit)
-        forecast_err = _handle_missing_cache()
-        return {
-            "forecast": forecast_err,
-            "inversion": {},
-            "sources": {},
-            "explanation": {"scientific_status": forecast_err["scientific_status"]},
-        }
-        
-    return valid_data
+    if valid_data:
+        result = deepcopy(valid_data)
+    elif data:
+        result = _mark_cached_fallback(data, "live refresh is delayed")
+    else:
+        result = {"forecast": cached_forecast(hours), "inversion": {}, "sources": {}, "explanation": {}}
+
+    result.setdefault("forecast", cached_forecast(hours))
+    try:
+        result.setdefault("inversion", cached_inversion(hour))
+        result.setdefault("sources", cached_sources(hour))
+        result.setdefault("explanation", build_explanation(hour))
+    except Exception:
+        result.setdefault("explanation", {"scientific_status": "Explanation is temporarily unavailable."})
+    result["fallback"] = bool(result.get("fallback", False))
+    return result
 
 
 def _compute_map_data(hour: int = 24, variable: str = "pm25") -> dict[str, Any]:
@@ -423,13 +453,31 @@ def cached_map_data(hour: int = 24, variable: str = "pm25") -> dict[str, Any]:
     data = _get_cache_json(f"map_{variable}.json")
     valid_data = _validate_cache_staleness(data)
     
-    if not valid_data:
-        return {"error": "Map data unavailable (background generation failed or cache expired)"}
-        
-    return valid_data
+    if valid_data:
+        return valid_data
+    if data:
+        return _mark_cached_fallback(data, "live map refresh is delayed")
+    try:
+        return _compute_map_data(hour, variable)
+    except Exception:
+        return {"error": "Map data is temporarily unavailable", "fallback": True}
 
 def get_data_confidence(path=None) -> str:
-    # Read the cache_metadata from dashboard.json to dictate confidence
+    # Station metadata is the most user-visible truth for the current AQI.
+    # Do not report high confidence when the latest station file is an LKG.
+    project_root = Path(__file__).resolve().parents[2]
+    cpcb_meta_path = project_root / "backend" / "data" / "live" / "fetch_cpcb.meta.json"
+    if cpcb_meta_path.exists():
+        try:
+            import json
+            cpcb_meta = json.loads(cpcb_meta_path.read_text())
+            cpcb_confidence = str(cpcb_meta.get("data_confidence", ""))
+            if cpcb_confidence and not cpcb_confidence.lower().startswith("high"):
+                return cpcb_confidence
+        except Exception:
+            pass
+
+    # Read cache metadata from dashboard.json when station metadata is absent.
     data = _get_cache_json("dashboard.json")
     valid_data = _validate_cache_staleness(data)
     

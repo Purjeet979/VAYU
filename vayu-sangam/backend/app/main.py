@@ -165,7 +165,8 @@ def get_map_layers():
 def get_cpcb():
     """Return file-backed CPCB station observations for rankings and heatmaps."""
     try:
-        return _cpcb_response(cached_cpcb())
+        # Keep the historical list contract used by existing clients.
+        return cached_cpcb()
     except ValueError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
 
@@ -174,8 +175,7 @@ def get_cpcb():
 def get_cpcb_latest():
     """Return latest file-backed CPCB station observations for fast ranking UI."""
     try:
-        data = cached_cpcb_latest()
-        return _cpcb_response(data)
+        return cached_cpcb_latest()
     except ValueError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
 
@@ -287,26 +287,53 @@ def get_explanation(hour: int = Query(default=24, ge=0, le=72, description="Fore
 
 @app.get("/api/nowcast")
 def get_nowcast():
-    """Return the live interpolated nowcast grid from real station data."""
+    """Return live nowcast, or the bundled grid when the live artifact is missing."""
     import json
     from pathlib import Path
     project_root = Path(__file__).resolve().parents[2]
     nowcast_path = project_root / "backend" / "data" / "live" / "nowcast_grid.json"
     meta_path = project_root / "backend" / "data" / "live" / "nowcast_grid.meta.json"
     
-    if not nowcast_path.exists() or not meta_path.exists():
-        raise HTTPException(status_code=503, detail="Nowcast grid not yet generated or available.")
-        
     try:
-        with open(nowcast_path, "r") as f:
-            grid_data = json.load(f)
-        with open(meta_path, "r") as f:
-            meta_data = json.load(f)
-            
-        grid_data["meta"] = meta_data
-        return grid_data
+        if nowcast_path.exists() and meta_path.exists():
+            with open(nowcast_path, "r") as f:
+                grid_data = json.load(f)
+            with open(meta_path, "r") as f:
+                meta_data = json.load(f)
+            grid_data["meta"] = meta_data
+            return grid_data
+
+        # Keep map usable on a cold start.  This is generated from the local
+        # NetCDF demo/cache model and has the same shape as the nowcast file.
+        from .api_service import cached_grid
+        pm25 = cached_grid(24, "pm25")
+        aqi = cached_grid(24, "pm25")
+        aqi_values = [[None if value is None else round(float(value) * 1.6, 1) for value in row] for row in aqi["values"]]
+        return {
+            "type": "nowcast",
+            "fallback": True,
+            "data_source": "bundled_demo_dataset",
+            "generated_at_utc": pm25.get("timestamp"),
+            "grid": {"lats": pm25["lat"], "lons": pm25["lon"]},
+            "layers": {"pm25": pm25["values"], "aqi": aqi_values},
+            "meta": {"is_live": False, "note": "Live map refresh unavailable; local backup shown."},
+        }
     except Exception as error:
-        raise HTTPException(status_code=500, detail=str(error)) from error
+        # A damaged live JSON file should behave exactly like a missing file.
+        try:
+            from .api_service import cached_grid
+            pm25 = cached_grid(24, "pm25")
+            aqi_values = [[None if value is None else round(float(value) * 1.6, 1) for value in row] for row in pm25["values"]]
+            return {
+                "type": "nowcast",
+                "fallback": True,
+                "data_source": "bundled_demo_dataset",
+                "grid": {"lats": pm25["lat"], "lons": pm25["lon"]},
+                "layers": {"pm25": pm25["values"], "aqi": aqi_values},
+                "meta": {"is_live": False, "note": f"Live map file could not be read: {error}"},
+            }
+        except Exception as backup_error:
+            raise HTTPException(status_code=503, detail=f"Map backup unavailable: {backup_error}") from backup_error
 
 @app.get("/api/ml/shap")
 def get_ml_shap(hour: int = Query(default=24, ge=0, le=72, description="Forecast hour")):

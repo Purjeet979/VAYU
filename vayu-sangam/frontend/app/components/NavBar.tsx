@@ -93,7 +93,7 @@ export default function NavBar() {
         </Link>
       </div>
 
-      {/* Right: User & Actions */}
+      {/* Right: Actions */}
       <div className="flex items-center gap-4">
         {mounted && (
           <button 
@@ -104,15 +104,6 @@ export default function NavBar() {
             {theme === 'dark' ? <Sun className="w-4 h-4" style={{ color: 'var(--text-muted)' }} /> : <Moon className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />}
           </button>
         )}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-panel border border-panelBorder hover:border-gray-400 dark:hover:border-gray-600 cursor-pointer transition-colors">
-          <div className="w-6 h-6 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center overflow-hidden">
-            <User className="w-4 h-4 text-gray-500 dark:text-gray-300" />
-          </div>
-          <ChevronDown className="w-4 h-4 text-gray-400" />
-        </div>
-        <button className="w-9 h-9 rounded-full bg-panel border border-panelBorder flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors">
-          <Search className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-        </button>
       </div>
     </nav>
   );
