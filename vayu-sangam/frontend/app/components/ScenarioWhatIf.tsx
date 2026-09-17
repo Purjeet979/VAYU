@@ -179,11 +179,11 @@ export default function ScenarioWhatIf() {
               </span>
               <div className="flex items-center gap-3 mt-2">
                 <div className="text-2xl font-bold text-gray-400 line-through">
-                  {data.baseline_pm25.toFixed(1)}
+                  {data?.baseline_pm25 != null ? data.baseline_pm25.toFixed(1) : '-'}
                 </div>
                 <ArrowRight className="w-4 h-4 text-gray-400" />
                 <div className="text-3xl font-extrabold text-foreground">
-                  {data.scenario_pm25.toFixed(1)}
+                  {data?.scenario_pm25 != null ? data.scenario_pm25.toFixed(1) : '-'}
                 </div>
                 <span className="text-xs text-gray-500">µg/m³</span>
               </div>
@@ -197,7 +197,7 @@ export default function ScenarioWhatIf() {
                 }`}
               >
                 {data.pm25_change < 0 ? <TrendingDown className="w-4 h-4" /> : null}
-                {data.pm25_change.toFixed(1)} µg/m³
+                {data?.pm25_change != null ? data.pm25_change.toFixed(1) : '-'} µg/m³
               </span>
             </div>
           </div>

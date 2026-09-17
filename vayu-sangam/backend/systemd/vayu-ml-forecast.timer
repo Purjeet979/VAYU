@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Vayu ML Forecast Hourly
+
+[Timer]
+# Run at minute 15 of every hour (so it runs shortly after vayu-cron which runs every 15 mins)
+OnCalendar=*-*-* *:15:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

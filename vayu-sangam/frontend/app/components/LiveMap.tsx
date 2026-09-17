@@ -4,6 +4,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Layers, Flame, CloudFog, Wind, CloudRain, Shield, AlertOctagon } from 'lucide-react';
+import { GridData, computeChoropleth, pointInGeoJSONFeature } from '../lib/spatial';
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap, useMapEvent, GeoJSON } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -12,12 +13,6 @@ import { fetchJson } from '../lib/api';
 
 const DELHI_CENTER: [number, number] = [28.6139, 77.209];
 const TILE_URL = process.env.NEXT_PUBLIC_MAP_TILE_URL || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-
-type GridData = {
-  lat: number[];
-  lon: number[];
-  values: (number | null)[][];
-};
 
 type SourcePoint = {
   cluster_id: number | string;
@@ -113,73 +108,6 @@ function MapController({ searchedLocation, onZoomOut, setMapInstance }: { search
   return null;
 }
 
-// --- Ray Casting Algorithm for Point in Polygon ---
-function pointInPolygon(point: [number, number], vs: [number, number][]) {
-  const x = point[0], y = point[1];
-  let inside = false;
-  for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
-    const xi = vs[i][0], yi = vs[i][1];
-    const xj = vs[j][0], yj = vs[j][1];
-    const intersect = ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-    if (intersect) inside = !inside;
-  }
-  return inside;
-}
-
-function pointInGeoJSONFeature(lon: number, lat: number, geometry: any) {
-  const pt: [number, number] = [lon, lat];
-  if (geometry.type === 'Polygon') {
-    return pointInPolygon(pt, geometry.coordinates[0]);
-  } else if (geometry.type === 'MultiPolygon') {
-    for (const poly of geometry.coordinates) {
-      if (pointInPolygon(pt, poly[0])) return true;
-    }
-  }
-  return false;
-}
-
-function computeChoropleth(geo: any, gridData: GridData | null) {
-  if (!geo || !gridData?.values) return null;
-  const newGeo = JSON.parse(JSON.stringify(geo)); // deep copy
-  for (const feature of newGeo.features) {
-    let sum = 0;
-    let count = 0;
-    let minD = Infinity;
-    let nearestVal: number | null = null;
-    
-    // Find polygon centroid roughly for fallback
-    let minLon = 180, maxLon = -180, minLat = 90, maxLat = -90;
-    const updateBounds = (pts: any[]) => pts.forEach((p:any) => {
-      minLon = Math.min(minLon, p[0]); maxLon = Math.max(maxLon, p[0]);
-      minLat = Math.min(minLat, p[1]); maxLat = Math.max(maxLat, p[1]);
-    });
-    if (feature.geometry.type === 'Polygon') updateBounds(feature.geometry.coordinates[0]);
-    else if (feature.geometry.type === 'MultiPolygon') feature.geometry.coordinates.forEach((poly:any) => updateBounds(poly[0]));
-    const cx = (minLon + maxLon)/2, cy = (minLat + maxLat)/2;
-
-    for (let i = 0; i < gridData.lat.length; i++) {
-      for (let j = 0; j < gridData.lon.length; j++) {
-        const val = gridData.values[i]?.[j];
-        if (typeof val === 'number' && !Number.isNaN(val)) {
-          const lat = gridData.lat[i], lon = gridData.lon[j];
-          
-          // ponytail: Using binary point-in-polygon (centroid inclusion) instead of true area-weighted intersection. 
-          // Ceiling: Boundary cells partially overlapping a district are fully counted or fully discarded. Measured max error: ~5%.
-          // Upgrade path: If precision ever crosses visual color-bin thresholds (MAUP), move this aggregation to the Python backend using geopandas.sjoin or exactextract, do NOT import @turf/turf on the client and run 12,000 polygon intersections on the main thread.
-          // Note: `backend/tests/test_zonal_average_tripwire.py` runs on demo data to act as an early-warning tripwire if color bins ever mismatch.
-          if (pointInGeoJSONFeature(lon, lat, feature.geometry)) {
-            sum += val;
-            count++;
-          }
-          const d = Math.hypot(lat - cy, lon - cx);
-          if (d < minD) { minD = d; nearestVal = val; }
-        }
-      }
-    }
-    feature.properties.value = count > 0 ? (sum / count) : (minD < 0.5 && nearestVal !== null ? nearestVal : null);
-  }
-  return newGeo;
-}
 
 export default function LiveMap() {
   const [sources, setSources] = useState<SourcePoint[]>([]);

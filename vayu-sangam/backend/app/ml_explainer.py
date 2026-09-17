@@ -12,6 +12,9 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import datetime
+
+from backend.scripts.cpcb_history_store import get_lag_features
 
 ML_DIR = Path(__file__).resolve().parents[1] / "data" / "ml"
 PM25_MODEL_PATH = ML_DIR / "xgb_pm25.joblib"
@@ -108,14 +111,19 @@ def _current_weather_features(hour: int) -> pd.DataFrame | None:
 
         ts   = pd.Timestamp(frame.time.values) if hasattr(frame, "time") else pd.Timestamp.now()
 
-        # Lag features: approximate from current hour (best effort)
-        pm25_now = _get(["pm25"], 80.0)
+        # Get real lag features from DB
+        target_time = (datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)).replace(minute=0, second=0, microsecond=0)
+        lags = get_lag_features(target_time)
+        
+        if isinstance(lags, str):
+            # Phase 0 constraint: If we don't have enough history, explicit short-circuit
+            return None
 
         row = {
             "temperature_c": t_c,
             "relative_humidity_pct": rh,
             "wind_speed_mps": ws,
-            "wind_dir_deg": 180.0,        # not stored in nc — use neutral
+            "wind_dir_deg": 180.0,        # not stored in nc ?" use neutral
             "precipitation": 0.0,         # not stored in nc
             "pbl_height_m": pblh,
             "hour_of_day": ts.hour,
@@ -125,9 +133,9 @@ def _current_weather_features(hour: int) -> pd.DataFrame | None:
             "fire_count_24h": fire_count,
             "fire_frp_sum_24h": fire_frp_sum,
             "fire_frp_max_24h": fire_frp_max,
-            "pm25_lag1h": pm25_now,
-            "pm25_lag3h": pm25_now,
-            "pm25_lag24h": pm25_now,
+            "pm25_lag1h": lags["pm25_lag1h"],
+            "pm25_lag3h": lags["pm25_lag3h"],
+            "pm25_lag24h": lags["pm25_lag24h"],
         }
         return pd.DataFrame([row])
     except Exception:

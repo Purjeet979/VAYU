@@ -55,5 +55,15 @@ The system uses a fallback architecture for data sources:
 
 Data mode is controlled via the `DATA_MODE` variable in `.env`.
 
+### Important Architecture Learnings
+- **Explicit Data Cleanups**: When fixing a data-corruption bug (like future-dated timestamps caused by API parsing errors), it is fundamentally risky to assume the system will passively overwrite the corrupt data on the next fetch. If the next fetch fails (e.g. network timeout or API stale thresholds preventing fetch), the corrupt data survives in the cache and blocks analytical components indefinitely. **Always write explicit, one-time cleanup/migration scripts to actively purge corrupt data rather than relying on passive overwrites.**
+
+### CAMS Global Cross-Validation (Phase 4)
+- **Scope & Limitations**: The system integrates the Copernicus Atmosphere Monitoring Service (CAMS) as a cross-validation baseline to compare against local surrogate models (XGBoost). Due to its ~40km native resolution, CAMS typically underestimates localized episodic spikes (like stubble burning). We expose this limitation honestly rather than hiding it.
+- **Bias Correction State**: A localized downscaling bias-correction XGBoost model is planned but explicitly disabled when insufficient overlapping CPCB training data (< 14 days) is available. The system intelligently detects this and honestly flags `"bias_correction": "not_yet_available"`.
+
+### Operational Workarounds
+- **OpenAQ Stale Threshold (120h)**: Due to consistent upstream API downtime (`api.data.gov.in`), the `STALE_THRESHOLD_HOURS` for the OpenAQ fallback has been temporarily relaxed from `72h` to `120h`. This ensures the demo dashboard has *some* recent live data explicitly labeled with its age, rather than displaying an empty pipeline. **This is an emergency operational workaround for the demo and must be reverted to `72h` for production once the primary source stabilizes.**
+
 ## License
 MIT License

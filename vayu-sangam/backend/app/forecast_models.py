@@ -279,15 +279,15 @@ class XGBoostBiasCorrector:
         self.feature_names = list(feature_names)
         self.model: Any | None = None
 
-    def fit(self, feature_matrix: pd.DataFrame, observed_pm25: Sequence[float]) -> None:
-        if len(feature_matrix) != len(observed_pm25) or feature_matrix.empty:
-            raise ValueError("Features and aligned observed_pm25 values must be non-empty and the same length")
+    def fit(self, feature_matrix: pd.DataFrame, observed_values: Sequence[float]) -> None:
+        if len(feature_matrix) != len(observed_values) or feature_matrix.empty:
+            raise ValueError("Features and aligned observed_values must be non-empty and the same length")
         try:
             from xgboost import XGBRegressor
         except ImportError as error:
             raise RuntimeError("Bias correction requires the optional 'xgboost' dependency") from error
         self.model = XGBRegressor(n_estimators=100, max_depth=4, learning_rate=0.05, objective="reg:squarederror")
-        self.model.fit(feature_matrix[self.feature_names], observed_pm25)
+        self.model.fit(feature_matrix[self.feature_names], observed_values)
 
     def predict(self, feature_matrix: pd.DataFrame) -> np.ndarray:
         if self.model is None:

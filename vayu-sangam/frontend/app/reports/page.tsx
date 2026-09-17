@@ -3,9 +3,9 @@
 import { useEffect, useState, useMemo } from 'react';
 import { fetchJson } from '../lib/api';
 import { getCityTheme, NCR_CITIES } from '../lib/cityColors';
-import { Activity, MapPin, AlertCircle, BarChart3, GitCompare, LayoutGrid } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend } from 'recharts';
-import { Search, ChevronDown, Check } from 'lucide-react';
+import { Activity, MapPin, AlertCircle, BarChart3, GitCompare, LayoutGrid, Search, ChevronDown, Check } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, PieChart, Pie, Legend } from 'recharts';
+import { GridData, computeChoropleth } from '../lib/spatial';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -127,8 +127,19 @@ function SearchableDropdown({ value, options, onChange, placeholder, disabled = 
   );
 }
 
+const ADJACENCY: Record<string, string[]> = {
+  "Delhi": ["Gurugram", "Noida", "Ghaziabad", "Faridabad"],
+  "Gurugram": ["Delhi", "Faridabad"],
+  "Noida": ["Delhi", "Ghaziabad", "Faridabad", "Greater Noida"],
+  "Ghaziabad": ["Delhi", "Noida", "Greater Noida"],
+  "Faridabad": ["Delhi", "Gurugram", "Noida", "Greater Noida"],
+  "Greater Noida": ["Noida", "Ghaziabad", "Faridabad"]
+};
+
 export default function ReportsPage() {
   const [data, setData] = useState<any[]>([]);
+  const [gridData, setGridData] = useState<GridData | null>(null);
+  const [geoData, setGeoData] = useState<any>(null);
   const [staleWarning, setStaleWarning] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -137,12 +148,16 @@ export default function ReportsPage() {
   const [city2, setCity2] = useState<string>('None');
 
   useEffect(() => {
-    fetchJson<any>('/api/cpcb/latest')
-      .then(d => {
-        // Handle both old plain-array and new wrapped response
+    Promise.all([
+      fetchJson<any>('/api/cpcb/latest'),
+      fetchJson<GridData>('/api/nowcast').catch(() => null),
+      fetch('/ncr_districts.geojson').then(r => r.json()).catch(() => null)
+    ])
+      .then(([d, g, geo]) => {
         const rows = Array.isArray(d) ? d : (d?.Data ?? []);
         setData(rows);
-        // Prefer the actionable stale_warning from backend; it already names missing cities
+        setGridData(g);
+        setGeoData(geo);
         if (d?.stale_warning) setStaleWarning(d.stale_warning);
       })
       .catch(() => setError(true))
@@ -150,9 +165,22 @@ export default function ReportsPage() {
   }, []);
 
   const allCities = useMemo(() => {
-    if (!data) return [];
-    return Array.from(new Set(data.map(d => d.city).filter(Boolean))).sort();
+    const fromData = data ? data.map(d => d.city).filter(Boolean) : [];
+    const fromNCR = NCR_CITIES;
+    return Array.from(new Set([...fromData, ...fromNCR])).sort();
   }, [data]);
+
+  const districtAqiMap = useMemo(() => {
+    if (!geoData || !gridData) return {};
+    const computedGeo = computeChoropleth(geoData, gridData);
+    const map: Record<string, number> = {};
+    if (computedGeo?.features) {
+       for (const f of computedGeo.features) {
+          if (f.properties.value) map[f.properties.district] = Math.round(f.properties.value);
+       }
+    }
+    return map;
+  }, [geoData, gridData]);
 
   const cityStats = useMemo(() => {
     if (!data || data.length === 0) return [];
@@ -176,14 +204,25 @@ export default function ReportsPage() {
       }
     });
 
+    // Ensure all predefined NCR cities appear even if 0 active stations
+    NCR_CITIES.forEach(city => {
+      if (!cityMap[city]) {
+        cityMap[city] = { stationCount: 0, aqiVals: [], pm25Vals: [], pm10Vals: [], no2Vals: [], maxAqi: 0, maxAqiStation: '' };
+      }
+    });
+
+
     return Object.keys(cityMap).map(city => {
       const c = cityMap[city];
       const avg = (arr: number[]) => arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
+      const computedAqi = districtAqiMap[city];
+      const displayAqi = computedAqi || avg(c.aqiVals); // Fallback to station avg if choropleth is missing
+
       return {
         city,
         stationCount: c.stationCount,
         validAqiCount: c.aqiVals.length,
-        avgAqi: avg(c.aqiVals),
+        avgAqi: displayAqi,
         avgPm25: avg(c.pm25Vals) || '-',
         avgPm10: avg(c.pm10Vals) || '-',
         avgNo2: avg(c.no2Vals) || '-',
@@ -191,7 +230,7 @@ export default function ReportsPage() {
         maxAqiStation: c.maxAqiStation || 'No Data'
       };
     }).sort((a, b) => b.avgAqi - a.avgAqi);
-  }, [data]);
+  }, [data, districtAqiMap]);
 
   const getCityDetails = (cityName: string) => {
     if (!data || cityName === 'Overview' || cityName === 'None') return null;
@@ -218,6 +257,21 @@ export default function ReportsPage() {
       fullMark: p.full
     }));
   }, [details1, details2, city1, city2]);
+
+
+  const touchingCitiesPieData = useMemo(() => {
+    if (city1 === 'Overview' || city1 === 'None') return [];
+    const touchingCities = ADJACENCY[city1] || [];
+    const pieData = [
+      { name: city1, value: cityStats.find(c => c.city === city1)?.avgAqi || 0, color: getCityTheme(city1).hex },
+      ...touchingCities.map(tc => ({
+        name: tc,
+        value: cityStats.find(c => c.city === tc)?.avgAqi || 0,
+        color: getCityTheme(tc).hex
+      }))
+    ].filter(d => d.value > 0);
+    return pieData;
+  }, [city1, cityStats]);
 
   return (
     <div className="flex-1 w-full py-8 px-6 max-w-7xl mx-auto flex flex-col gap-8">
@@ -403,7 +457,7 @@ export default function ReportsPage() {
                     />
                     <Bar dataKey="avgAqi" radius={[6, 6, 0, 0]}>
                       {cityStats.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={getCityTheme(entry.city).hex} />
+                        <Cell key={`cell-${index}`} fill={aqiColor(entry.avgAqi)} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -628,6 +682,44 @@ export default function ReportsPage() {
                     </div>
                   )}
                 </div>
+                
+                {/* TOUCHING CITIES PIE CHART */}
+                {city1 !== 'Overview' && city2 === 'None' && touchingCitiesPieData.length > 1 && (
+                  <div className="bg-panel rounded-2xl border border-panelBorder shadow-xl p-6 mt-6">
+                    <h2 className="text-lg font-semibold flex items-center gap-2 text-foreground mb-4">
+                      <LayoutGrid className="w-5 h-5 text-purple-500" /> Relative Pollution Share (Adjacent Cities)
+                    </h2>
+                    <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
+                      Comparison of the average AQI between <strong>{city1}</strong> and its neighboring districts.
+                    </p>
+                    <div className="h-64 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={touchingCitiesPieData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={60}
+                            outerRadius={80}
+                            paddingAngle={5}
+                            dataKey="value"
+                            nameKey="name"
+                            label={({ name, percent }: any) => `${name} (${((percent || 0) * 100).toFixed(0)}%)`}
+                          >
+                            {touchingCitiesPieData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip 
+                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}
+                            formatter={(value: any) => [`AQI ${value}`, 'Average AQI']}
+                          />
+                          <Legend />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                )}
                 
                 {/* COMPARISON RADAR CHART */}
                 {city2 !== 'None' && details1 && details2 && (

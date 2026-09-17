@@ -96,7 +96,7 @@ def map_stations(records, lookup_df):
         else:
             merged[c] = pd.to_numeric(merged[c], errors='coerce').clip(lower=0.0)
 
-    final_cols = ['timestamp', 'station_id', 'pm25', 'pm10', 'no2', 'o3', 'co', 'so2', 'station_name', 'data_source', 'quality', 'confidence']
+    final_cols = ['timestamp', 'station_id', 'pm25', 'pm10', 'no2', 'o3', 'co', 'so2', 'station_name', 'city', 'latitude', 'longitude', 'data_source', 'quality', 'confidence']
     for c in ['data_source', 'quality', 'confidence']:
         if c not in merged.columns:
             if c == 'data_source': merged[c] = merged.get('source', 'unknown')
@@ -245,13 +245,14 @@ def main():
         fetch_utc = datetime.now(timezone.utc).isoformat()
         
     NCR_EXPECTED = {"Delhi", "Gurugram", "Noida", "Ghaziabad", "Faridabad", "Greater Noida"}
-    covered = set(str(r.get("city", "")).strip() for r in final_records if r.get("city"))
+    covered = set(final_df['city'].dropna().str.strip().unique()) if 'city' in final_df else set()
     covered = {c for c in covered if c}  # drop empty strings
     missing = NCR_EXPECTED - covered
-    cities_present = len(covered)
+    valid_ncr_present = len(NCR_EXPECTED.intersection(covered))
+    
     if source_used == "LKG":
         data_confidence = "Low (LKG stale fallback \u2014 all live sources failed)"
-    elif missing and cities_present < 4:
+    elif missing and valid_ncr_present < 4:
         missing_str = ", ".join(sorted(missing))
         data_confidence = f"Partial Coverage \u2014 data available for: {', '.join(sorted(covered))}; missing: {missing_str}"
     else:

@@ -13,6 +13,7 @@ import json
 import math
 from pathlib import Path
 from typing import Any
+import os
 
 import numpy as np
 import pandas as pd
@@ -120,9 +121,15 @@ class SourceIntelligenceService:
     def __init__(self, paths: SourcePaths | None = None) -> None:
         project_root = Path(__file__).resolve().parents[2]
         demo_dir = project_root / "backend" / "data" / "demo"
+        live_dir = project_root / "backend" / "data" / "live"
+        data_mode = os.getenv("DATA_MODE", "demo").lower()
+        
+        # Completely removed the old HCHO mock path. We ONLY use the genuine LIVE GEE file now.
+        hcho_path = live_dir / "hcho_hotspots.geojson"
+        
         self.paths = paths or SourcePaths(
             fires=demo_dir / "fires_demo.csv",
-            hcho=demo_dir / "hcho_hotspots.geojson",
+            hcho=hcho_path,
             wind=demo_dir / "wind_demo.nc",
             config=project_root / "configs" / "demo.yaml",
         )
@@ -145,6 +152,9 @@ class SourceIntelligenceService:
         return fires
 
     def _load_hcho_hotspots(self) -> list[dict[str, float]]:
+        if not self.paths.hcho.exists():
+            return []
+            
         with self.paths.hcho.open(encoding="utf-8") as hotspot_file:
             geojson = json.load(hotspot_file)
         return [
@@ -299,9 +309,10 @@ class SourceIntelligenceService:
         clusters.sort(key=lambda cluster: cluster["source_score"], reverse=True)
         noise_count = 0 if clusters and all(cluster.get("source_type") == "single_fire" for cluster in clusters) else int(sum(label == -1 for label in labels))
         timestamp = pd.Timestamp(self.wind.time.values[hour]).isoformat()
+        data_mode = os.getenv("DATA_MODE", "demo").lower()
         return {
-            "mode": "demo",
-            "data_source": "bundled_demo_dataset",
+            "mode": data_mode,
+            "data_source": "live_api" if data_mode == "live" else "bundled_demo_dataset",
             "model": "SourceIntelligencePrototype",
             "model_version": "0.2.0",
             "scientific_status": "prototype heuristic; not scientifically calibrated",

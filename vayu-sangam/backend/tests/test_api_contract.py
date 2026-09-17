@@ -1,5 +1,5 @@
-"""Phase 6 API contract tests without requiring an external HTTP client."""
-
+import sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import unittest
 
 from fastapi import HTTPException
@@ -11,6 +11,7 @@ from app.main import (
     get_explainability,
     get_explanation,
     get_forecast,
+    get_forecast_logic,
     get_forecast_grid,
     get_health,
     get_cpcb,
@@ -40,7 +41,7 @@ class ApiContractTests(unittest.TestCase):
     def test_all_get_endpoints_return_useful_payloads(self):
         self.assertIn("message", read_root())
         self.assertEqual(get_health()["status"], "ok")
-        self.assertEqual(len(get_forecast(72)["forecast"]), 72)
+        self.assertEqual(len(get_forecast_logic("pm25", 72)["forecast"]), 72)
         grid = get_forecast_grid(24, "pm25")
         self.assertEqual(grid["variable"], "pm25")
         self.assertEqual(len(grid["values"]), len(grid["lat"]))

@@ -1,0 +1,14 @@
+[Unit]
+Description=Vayu ML Forecast and Cache Generation Service
+After=network.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/backend
+Environment="DATA_MODE=live"
+ExecStart=/home/ubuntu/venv/bin/python /home/ubuntu/backend/scripts/generate_caches.py
+
+# Add some timeout in case it hangs
+TimeoutStartSec=600

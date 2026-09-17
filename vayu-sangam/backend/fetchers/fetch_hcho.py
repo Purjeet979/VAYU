@@ -162,7 +162,7 @@ def fetch_hcho_live():
     _, _, fc = get_grid_points()
     
     end_date = datetime.now(timezone.utc)
-    start_date = end_date - timedelta(days=3)
+    start_date = end_date - timedelta(days=7)
     
     collection = ee.ImageCollection("COPERNICUS/S5P/NRTI/L3_HCHO") \
                    .filterDate(start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')) \

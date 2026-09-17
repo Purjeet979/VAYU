@@ -22,9 +22,11 @@ import math
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+import datetime
 
 import numpy as np
 import pandas as pd
+from backend.scripts.cpcb_history_store import get_lag_features
 import xarray as xr
 
 from .forecast_models import DemoForecastModel
@@ -187,10 +189,19 @@ def _xgb_predict_pm25(ds: xr.Dataset, hour: int, stubble_fraction: float) -> flo
             "fire_count_24h": 50.0 * stubble_fraction,
             "fire_frp_sum_24h": 3000.0 * stubble_fraction,
             "fire_frp_max_24h": 150.0 * stubble_fraction,
-            "pm25_lag1h": pm25_base,
-            "pm25_lag3h": pm25_base,
-            "pm25_lag24h": pm25_base,
         }
+        
+        target_time = datetime.datetime.utcnow().replace(minute=0, second=0, microsecond=0)
+        lags = get_lag_features(target_time)
+        
+        if isinstance(lags, str):
+            # Short-circuit if lacking lag history (Option C logic)
+            return None
+            
+        row["pm25_lag1h"] = lags["pm25_lag1h"]
+        row["pm25_lag3h"] = lags["pm25_lag3h"]
+        row["pm25_lag24h"] = lags["pm25_lag24h"]
+
         X = pd.DataFrame([{f: row.get(f, 0.0) for f in feature_names}])
         return float(model.predict(X)[0])
     except Exception:

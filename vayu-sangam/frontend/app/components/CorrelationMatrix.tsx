@@ -34,9 +34,15 @@ export default function CorrelationMatrix({ forecast }: { forecast: any[] }) {
 
     const mat = params.map(p1 => 
       params.map(p2 => {
-        const x = forecast.map(f => f[p1.key] || 0);
-        const y = forecast.map(f => f[p2.key] || 0);
-        return pearsonCorrelation(x, y);
+        const x: number[] = [];
+        const y: number[] = [];
+        forecast.forEach(f => {
+          if (f[p1.key] != null && f[p2.key] != null) {
+            x.push(f[p1.key]);
+            y.push(f[p2.key]);
+          }
+        });
+        return x.length > 1 ? pearsonCorrelation(x, y) : 0;
       })
     );
 
@@ -93,7 +99,7 @@ export default function CorrelationMatrix({ forecast }: { forecast: any[] }) {
                 return (
                   <div key={j} className="w-12 p-0.5">
                     <div className={`w-full h-8 rounded flex items-center justify-center text-[10px] font-mono font-medium ${getColor(val)}`}>
-                      {val.toFixed(2)}
+                      {typeof val === 'number' ? val.toFixed(2) : '-'}
                     </div>
                   </div>
                 );

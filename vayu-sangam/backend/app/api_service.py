@@ -12,7 +12,9 @@ import pandas as pd
 from .forecast_models import DemoForecastModel, ForecastPaths
 from .inversion_intelligence import InversionIntelligenceService, InversionPaths
 from .scenario_engine import compute_sub_indices
+from .aqi_calculator import calculate_overall_aqi
 from .source_intelligence import SourceIntelligenceService, SourcePaths
+from backend.scripts.cpcb_history_store import get_history_count
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -110,28 +112,103 @@ def _get_inversion_service_cached() -> InversionIntelligenceService:
     return InversionIntelligenceService(paths=i_paths)
 
 
-@lru_cache(maxsize=74)
-def cached_forecast(hours: int, stubble_fraction: float = 1.0) -> dict[str, Any]:
-    """Return a compact, deterministic timeline response for a scenario."""
-    model = get_demo_forecast_model()
-    rows = model.summary({"stubble_fraction": stubble_fraction}, horizon=hours)
+def _get_cache_json(filename: str) -> dict[str, Any] | None:
+    project_root = Path(__file__).resolve().parents[2]
+    cache_path = project_root / "backend" / "data" / "cache" / filename
+    if not cache_path.exists():
+        return None
+    try:
+        import json
+        with open(cache_path, "r") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+def _validate_cache_staleness(data: dict[str, Any] | None, max_hours: int = 6) -> dict[str, Any] | None:
+    if not data or "cache_metadata" not in data:
+        return None
+        
+    from datetime import datetime, timezone
+    try:
+        meta = data["cache_metadata"]
+        gen_time = datetime.fromisoformat(meta["generated_at_utc"].replace("Z", "+00:00"))
+        age_hours = (datetime.now(timezone.utc) - gen_time).total_seconds() / 3600
+        
+        # 1. Check if the cache file itself is too old (e.g. background job crashed)
+        if age_hours > max_hours:
+            return None # Force failure if cache is too old (Cold Cache Failover)
+            
+        # 2. Check if the underlying data it was built on is too old (> 120h)
+        data_age = meta.get("underlying_data_age_hours", 0)
+        if data_age > 120:
+            return None # Force failure if the live data pipeline is stuck
+            
+        return data
+    except Exception:
+        return None
+
+def _handle_missing_cache() -> dict[str, Any]:
+    # THIS PRESERVES THE HONEST DYNAMIC FALLBACK FOR THE FRONTEND
+    count_data = get_history_count()
+    if count_data["status"] != "sufficient":
+        return {
+            "mode": DATA_MODE,
+            "data_source": "bundled_demo_dataset",
+            "scientific_status": f"insufficient_data: {count_data['valid_observations']}/{count_data['required_observations']} hours collected.",
+            "forecast": [] # Empty to signal UI gracefully
+        }
+    return {
+        "mode": DATA_MODE,
+        "data_source": "system_failure",
+        "scientific_status": "Forecast unavailable (background generation failed or cache expired).",
+        "forecast": []
+    }
+
+def _compute_forecast(hours: int, stubble_fraction: float = 1.0) -> dict[str, Any]:
+    from backend.app.live_inference import get_live_forecast_data
+    live_data = get_live_forecast_data(horizon=hours, stubble_fraction=stubble_fraction)
+    rows = live_data["forecast"]
     for row in rows:
         for pol in ["pm25_ug_m3", "pm10_ug_m3", "o3_ug_m3", "nox_ug_m3", "so2_ug_m3", "co_mg_m3", "no2_ug_m3"]:
             if pol in row and row[pol] is not None:
                 row[pol] = _clamp(row[pol])
-        row["aqi"] = _aqi(row["pm25_ug_m3"], row["pm10_ug_m3"], row["o3_ug_m3"])
+        pollutants_for_aqi = {
+            "pm25": row.get("pm25_ug_m3"),
+            "pm10": row.get("pm10_ug_m3"),
+            "o3": row.get("o3_ug_m3"),
+            "no2": row.get("no2_ug_m3") or row.get("nox_ug_m3"),
+            "so2": row.get("so2_ug_m3"),
+            "co": row.get("co_mg_m3"),
+        }
+        val, _ = calculate_overall_aqi(pollutants_for_aqi)
+        if "aqi" not in row or val > 0:
+            row["aqi"] = val if val > 0 else None
         for k, v in row.items():
             if isinstance(v, float) and np.isnan(v): row[k] = None
     return {
         "mode": DATA_MODE,
-        "data_source": "bundled_demo_dataset",
-        "model": model.model_name,
-        "model_version": model.model_version,
-        "scientific_status": "synthetic demo forecast; not scientifically validated",
+        "data_source": live_data["data_source"],
+        "model": "XGBoostBiasCorrector" if "xgboost" in live_data["data_source"] else "DemoForecastModel",
+        "model_version": "0.1.0",
+        "scientific_status": live_data["scientific_status"],
         "hours": hours,
         "stubble_fraction": stubble_fraction,
         "forecast": rows,
     }
+
+def cached_forecast(hours: int, stubble_fraction: float = 1.0) -> dict[str, Any]:
+    """Reads the background-generated dashboard cache."""
+    data = _get_cache_json("dashboard.json")
+    valid_data = _validate_cache_staleness(data)
+    
+    if not valid_data:
+        return _handle_missing_cache()
+        
+    forecast_data = valid_data.get("forecast", {})
+    if "forecast" in forecast_data:
+        forecast_data["forecast"] = forecast_data["forecast"][:hours]
+        
+    return forecast_data
 
 
 @lru_cache(maxsize=512)
@@ -143,12 +220,14 @@ def cached_grid(hour: int, variable: str, stubble_fraction: float = 1.0) -> dict
     model = get_demo_forecast_model()
     frame = model.predict({"stubble_fraction": stubble_fraction}, horizon=hour + 1).isel(time=hour)
     field = frame[variable]
+    count_data = get_history_count()
+    status = f"Building live-forecast-history: {count_data['valid_observations']}/{count_data['required_observations']} hours collected ({count_data['coverage_percent']}%)"
     return {
         "mode": DATA_MODE,
-        "data_source": "bundled_demo_dataset",
+        "data_source": "live_api" if DATA_MODE == "live" else "bundled_demo_dataset",
         "model": model.model_name,
         "model_version": model.model_version,
-        "scientific_status": "synthetic demo forecast; not scientifically validated",
+        "scientific_status": status,
         "hour": hour,
         "timestamp": str(frame.time.values),
         "variable": variable,
@@ -208,6 +287,8 @@ def cached_cpcb() -> list[dict[str, Any]]:
     stations_path = data_dir / "cpcb_stations.csv"
     if stations_path.exists():
         stations = pd.read_csv(stations_path)
+        if "city" in df.columns:
+            df = df.drop(columns=["city"])
         df = df.merge(
             stations[["station_id", "lat", "lon", "city", "state"]],
             on="station_id",
@@ -215,12 +296,26 @@ def cached_cpcb() -> list[dict[str, Any]]:
         )
 
     def row_aqi(row: pd.Series) -> int | None:
-        if pd.isna(row["pm25"]) or pd.isna(row["pm10"]) or pd.isna(row["o3"]):
-            return None
-        return _aqi(float(row["pm25"]), float(row["pm10"]), float(row["o3"]))
+        pollutants = {
+            "pm25": float(row["pm25"]) if not pd.isna(row["pm25"]) else None,
+            "pm10": float(row["pm10"]) if not pd.isna(row["pm10"]) else None,
+            "no2": float(row["no2"]) if not pd.isna(row["no2"]) else None,
+            "o3": float(row["o3"]) if not pd.isna(row["o3"]) else None,
+            "co": float(row["co"]) if not pd.isna(row["co"]) else None,
+            "so2": float(row["so2"]) if not pd.isna(row["so2"]) else None,
+        }
+        val, _ = calculate_overall_aqi(pollutants)
+        return val if val > 0 else None
 
     df["hour"] = df["timestamp"].dt.hour
     df["aqi"] = df.apply(row_aqi, axis=1)
+    
+    if "partial_pollutant_set" in df.columns:
+        df["disclaimer"] = df.apply(
+            lambda r: "AQI based on partial pollutant data (PM2.5 or PM10 missing in this 60-min window)" 
+            if r.get("partial_pollutant_set") == True else None, axis=1
+        )
+        
     df = df.sort_values(["station_name", "timestamp"])
     df["timestamp"] = df["timestamp"].dt.strftime("%Y-%m-%dT%H:%M:%S")
     return df.replace({np.nan: None}).to_dict(orient="records")
@@ -273,7 +368,7 @@ def build_explanation(hour: int) -> dict[str, Any]:
     )
     return {
         "mode": DATA_MODE,
-        "data_source": "bundled_demo_dataset",
+        "data_source": "live_api" if DATA_MODE == "live" else "bundled_demo_dataset",
         "model": "RulesBasedExplanationPrototype",
         "model_version": "0.6.0",
         "scientific_status": "prototype evidence summary; not SHAP or scientifically calibrated",
@@ -284,82 +379,81 @@ def build_explanation(hour: int) -> dict[str, Any]:
     }
 
 
-@lru_cache(maxsize=16)
-def cached_dashboard_summary(hours: int = 72, hour: int = 24) -> dict[str, Any]:
-    """Bundle dashboard data into one response to reduce frontend round-trips."""
+def _compute_dashboard_summary(hours: int = 72, hour: int = 24) -> dict[str, Any]:
+    from .ml_explainer import explain_hour
+    explanation = explain_hour(hour)
+    if explanation is None:
+        explanation = build_explanation(hour)
+        
     return {
-        "forecast": cached_forecast(hours),
+        "forecast": _compute_forecast(hours),
         "inversion": cached_inversion(hour),
         "sources": cached_sources(hour),
-        "explanation": build_explanation(hour),
+        "explanation": explanation,
     }
 
 
-@lru_cache(maxsize=128)
-def cached_map_data(hour: int = 24, variable: str = "pm25") -> dict[str, Any]:
-    """Bundle map layers into one response to reduce frontend round-trips."""
+def cached_dashboard_summary(hours: int = 72, hour: int = 24) -> dict[str, Any]:
+    """Reads the background-generated dashboard cache."""
+    data = _get_cache_json("dashboard.json")
+    valid_data = _validate_cache_staleness(data)
+    
+    if not valid_data:
+        # Fallback to returning the missing cache structure (empty but explicit)
+        forecast_err = _handle_missing_cache()
+        return {
+            "forecast": forecast_err,
+            "inversion": {},
+            "sources": {},
+            "explanation": {"scientific_status": forecast_err["scientific_status"]},
+        }
+        
+    return valid_data
+
+
+def _compute_map_data(hour: int = 24, variable: str = "pm25") -> dict[str, Any]:
     return {
         "sources": cached_sources(hour),
         "grid": cached_grid(hour, variable),
     }
 
 
-def get_data_confidence(path) -> str:
+def cached_map_data(hour: int = 24, variable: str = "pm25") -> dict[str, Any]:
+    """Reads the background-generated map layers cache."""
+    data = _get_cache_json(f"map_{variable}.json")
+    valid_data = _validate_cache_staleness(data)
+    
+    if not valid_data:
+        return {"error": "Map data unavailable (background generation failed or cache expired)"}
+        
+    return valid_data
+
+def get_data_confidence(path=None) -> str:
+    # Read the cache_metadata from dashboard.json to dictate confidence
+    data = _get_cache_json("dashboard.json")
+    valid_data = _validate_cache_staleness(data)
+    
+    if not valid_data:
+        return "Low (Data Unavailable)"
+        
+    status = valid_data.get("forecast", {}).get("scientific_status", "")
+    if "insufficient_data" in status.lower():
+        return "Low (Demo Fallback due to insufficient buffer)"
+    
+    from datetime import datetime, timezone
     try:
-        from pathlib import Path
-        project_root = Path(__file__).resolve().parents[2]
-        data_dir = project_root / "backend" / "data"
-        live_dir = data_dir / "live"
-        cache_dir = data_dir / "cache"
+        gen_time = datetime.fromisoformat(valid_data["cache_metadata"]["generated_at_utc"].replace("Z", "+00:00"))
+        age_hours = (datetime.now(timezone.utc) - gen_time).total_seconds() / 3600
         
-        # Explicitly check all inputs
-        inputs = [
-            ("weather", ".nc"), ("fires", ".csv"), ("hcho_hotspots", ".geojson"), 
-            ("cpcb", ".csv"), ("forecast", ".nc"), ("aod", ".nc"), ("no2_satellite", ".nc")
-        ]
-        parents = []
-        for base, ext in inputs:
-            if (live_dir / f"{base}_live{ext}").exists() or (live_dir / f"{base}{ext}").exists():
-                parents.append("live")
-            elif (cache_dir / f"{base}_cache{ext}").exists() or (cache_dir / f"{base}{ext}").exists():
-                parents.append("cache")
-            else:
-                parents.append("demo")
-                
-        if "demo" in parents: return "Low (demo data)"
-        
-        # Add nuance for OpenAQ fallback
-        meta_path = live_dir / "fetch_cpcb.meta.json"
-        if meta_path.exists():
-            import json
-            from datetime import datetime, timezone
-            try:
-                with open(meta_path, "r") as f:
-                    meta = json.load(f)
-                if meta.get("source") == "OpenAQ":
-                    # Check how old the data actually is
-                    ts = meta.get("last_successful_fetch_utc", "")
-                    try:
-                        data_dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                        age_hours = (datetime.now(timezone.utc) - data_dt).total_seconds() / 3600
-                        if age_hours >= 65:
-                            return f"Medium (Fallback, data aging ~{int(age_hours)}h)"
-                    except:
-                        pass
-                    return "Medium (OpenAQ Fallback)"
-            except:
-                pass
-                
-        if "cache" in parents: return "Medium (cached data)"
-        return "High (live data)"
+        if age_hours > 2:
+            return f"Medium (Stale Cache, ~{int(age_hours)}h old)"
     except Exception:
-        return "Low (demo data)"
+        pass
+        
+    return "High (Live ML)"
 
-
-import xarray as xr
-
-@lru_cache(maxsize=1)
-def cached_station_forecasts():
+def _compute_station_forecasts():
+    import xarray as xr
     stations = [s for s in cached_cpcb_latest() if s.get("lat") and s.get("lon")]
     model = get_demo_forecast_model()
     ds = model.predict(horizon=72)
@@ -381,7 +475,6 @@ def cached_station_forecasts():
         forecast = []
         for h in range(72):
             frame = interp_ds.isel(time=h, station=i)
-            # handle NaN if outside grid
             pm25 = _clamp(float(frame.pm25.item())) if not np.isnan(frame.pm25.item()) else 0
             pm10 = _clamp(float(frame.pm10.item())) if not np.isnan(frame.pm10.item()) else 0
             o3 = _clamp(float(frame.o3.item())) if not np.isnan(frame.o3.item()) else 0
@@ -403,6 +496,16 @@ def cached_station_forecasts():
             "scientific_status": "spatial interpolation of existing grid, not a new prediction"
         })
     return results
+
+def cached_station_forecasts():
+    """Reads the background-generated station forecasts cache."""
+    data = _get_cache_json("stations.json")
+    valid_data = _validate_cache_staleness(data)
+    
+    if not valid_data:
+        return []
+        
+    return valid_data.get("data", [])
 
 def get_dominant_drivers(hour: int):
     inversion = cached_inversion(hour)
