@@ -237,6 +237,22 @@ def main():
             insert_readings(final_df)
         except Exception as db_err:
             logger.error(f"Failed to write to history DB: {db_err}")
+    else:
+        # GAP HANDLING: Carry forward LKG for short gaps (<= 2 hours) to preserve streak, break streak for large gaps.
+        try:
+            oldest_ts = pd.to_datetime(final_df['timestamp']).min()
+            if oldest_ts.tzinfo is None:
+                oldest_ts = oldest_ts.tz_localize('UTC')
+            age_hours = (datetime.now(timezone.utc) - oldest_ts).total_seconds() / 3600
+            if age_hours <= 2.0:
+                logger.info(f"Short gap detected ({age_hours:.1f}h). Carrying forward LKG data to history DB.")
+                carry_forward_df = final_df.copy()
+                carry_forward_df['timestamp'] = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:00:00+00:00')
+                insert_readings(carry_forward_df)
+            else:
+                logger.warning(f"Large gap detected ({age_hours:.1f}h). Breaking history streak. Not carrying forward LKG.")
+        except Exception as db_err:
+            logger.error(f"Failed gap handling for history DB: {db_err}")
 
     # Write freshness metadata
     try:
