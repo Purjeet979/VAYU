@@ -163,7 +163,7 @@ export default function ChatbotWidget() {
   const loadContext = useCallback(async () => {
     if (ctxLoaded) return;
     try {
-      const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+      const BASE = "";
       const [forecastRes, inversionRes, sourcesRes, healthRes] = await Promise.allSettled([
         fetch(`${BASE}/api/forecast?hours=72`).then((r) => r.json()),
         fetch(`${BASE}/api/inversion?hour=24`).then((r) => r.json()),
@@ -271,7 +271,18 @@ export default function ChatbotWidget() {
   };
 
   // Character: viewBox 100×200 → display at width=150, height proportional
-  const CHAR_W = 150;
+  const [charW, setCharW] = useState(150);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setCharW(window.innerWidth < 768 ? 100 : 150);
+    };
+    handleResize(); // Set initial size
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const CHAR_W = charW;
   const CHAR_H = CHAR_W * 2;
 
   return (
@@ -383,13 +394,19 @@ export default function ChatbotWidget() {
         {/* ── Chat Panel (left of character, slides in) ── */}
         {isOpen && (
           <div
-            className="vs-panel rounded-2xl flex flex-col mr-2 mb-2"
-            style={{
-              width: 360,
-              height: 520,
-              maxWidth: "calc(100vw - 140px)",
-              maxHeight: "calc(100vh - 80px)",
-            }}
+            className={`vs-panel rounded-2xl flex flex-col ${charW < 150 ? 'fixed bottom-4 right-3 left-3 shadow-2xl z-[10000]' : 'mr-2 mb-2'}`}
+            style={
+              charW < 150
+                ? {
+                    height: "85vh",
+                  }
+                : {
+                    width: 360,
+                    height: 520,
+                    maxWidth: "calc(100vw - 140px)",
+                    maxHeight: "calc(100vh - 80px)",
+                  }
+            }
           >
             {/* Header */}
             <div

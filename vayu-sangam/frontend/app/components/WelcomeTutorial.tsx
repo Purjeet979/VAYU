@@ -5,13 +5,14 @@ import React, { useState, useEffect, useCallback } from "react";
 interface TutorialAvatarProps {
   isTalking?: boolean;
   pointing?: boolean;
+  size?: number;
 }
 
 // Mini Avatar for tutorial - with pointing gesture
-const TutorialAvatar: React.FC<TutorialAvatarProps> = ({ isTalking = false, pointing = false }) => (
+const TutorialAvatar: React.FC<TutorialAvatarProps> = ({ isTalking = false, pointing = false, size = 120 }) => (
   <svg
-    width="120"
-    height="240"
+    width={size}
+    height={size * 2}
     viewBox="0 0 100 200"
     xmlns="http://www.w3.org/2000/svg"
     className="avatar-glow-tutorial"
@@ -418,7 +419,7 @@ export default function WelcomeTutorial() {
             pointerEvents: "none",
           }}
         >
-          <TutorialAvatar isTalking={isTalking} pointing={!!highlight} />
+          <TutorialAvatar isTalking={isTalking} pointing={!!highlight} size={typeof window !== "undefined" && window.innerWidth < 768 ? 90 : 120} />
         </div>
 
         {/* Speech Bubble */}

@@ -32,3 +32,5 @@ test_*.js
 test_*.py
 process_*.py
 openaq_*.json
+*.joblib
+check_db.py
