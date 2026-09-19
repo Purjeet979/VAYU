@@ -1,7 +1,7 @@
 "use client";
 
 import Link from 'next/link';
-import { Wind, LayoutGrid, Map as MapIcon, FileText, Search, ChevronDown, User, Sun, Moon, Home } from 'lucide-react';
+import { Wind, LayoutGrid, Map as MapIcon, FileText, Sun, Moon, Home } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
@@ -96,13 +96,24 @@ export default function NavBar() {
       {/* Right: Actions */}
       <div className="flex items-center gap-4">
         {mounted && (
-          <button 
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="w-9 h-9 rounded-full flex items-center justify-center transition-colors"
-            style={{ backgroundColor: 'var(--icon-bg)', border: '1px solid var(--panel-border)' }}
-          >
-            {theme === 'dark' ? <Sun className="w-4 h-4" style={{ color: 'var(--text-muted)' }} /> : <Moon className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />}
-          </button>
+          <>
+            <button 
+              onClick={() => {
+                localStorage.removeItem("vayuWelcomeDone");
+                window.location.reload();
+              }}
+              className="px-3 py-1.5 text-xs font-semibold rounded-full border border-cyan/40 text-cyan hover:bg-cyan/10 transition-colors"
+            >
+              Take a Tour
+            </button>
+            <button 
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              className="w-9 h-9 rounded-full flex items-center justify-center transition-colors"
+              style={{ backgroundColor: 'var(--icon-bg)', border: '1px solid var(--panel-border)' }}
+            >
+              {theme === 'dark' ? <Sun className="w-4 h-4" style={{ color: 'var(--text-muted)' }} /> : <Moon className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />}
+            </button>
+          </>
         )}
       </div>
     </nav>

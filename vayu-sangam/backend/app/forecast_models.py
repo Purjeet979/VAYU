@@ -100,6 +100,11 @@ class DemoForecastModel(ForecastModel):
         fraction = _scenario_fraction(features)
         forecast = self._forecast.isel(time=slice(0, horizon)).copy(deep=True)
         weather = self._weather.isel(time=slice(0, horizon)).copy(deep=True)
+        
+        current_time = pd.Timestamp.utcnow().floor("h")
+        dynamic_times = pd.date_range(start=current_time, periods=horizon, freq="h")
+        forecast = forecast.assign_coords(time=dynamic_times)
+
         weather = weather.assign_coords(
             time=forecast.time,
             lat=forecast.lat,

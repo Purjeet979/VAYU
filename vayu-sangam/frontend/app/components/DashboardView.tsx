@@ -10,6 +10,9 @@ import ForecastSlider from './ForecastSlider';
 import KpiCards from './KpiCards';
 import ScenarioWhatIf from './ScenarioWhatIf';
 import StationHeatmap from './StationHeatmap';
+import StationForecastPanel from './StationForecastPanel';
+import DominantDriversPanel from './DominantDriversPanel';
+import EarlyWarningBanner from './EarlyWarningBanner';
 import CamsCrossValidation from './CamsCrossValidation';
 import TwoLayerCard from './TwoLayerCard';
 import { fetchJson } from '../lib/api';
@@ -163,6 +166,7 @@ export default function DashboardView() {
         </div>
       </div>
 
+      <EarlyWarningBanner />
       <ForecastSlider hour={hour} setHour={setHour} />
 
       {loading && forecast.length === 0 ? (
@@ -438,10 +442,14 @@ export default function DashboardView() {
 
           {showSecondaryPanels ? (
             <>
+              <DominantDriversPanel hour={hour} />
               <ScenarioWhatIf />
               <CamsCrossValidation hour={hour} />
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
                 <StationHeatmap />
+                <StationForecastPanel hour={hour} />
+              </div>
+              <div className="mt-6">
                 <CorrelationMatrix forecast={forecast} />
               </div>
             </>

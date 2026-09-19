@@ -21,31 +21,7 @@ interface VayuContext {
   forecastPeak?: string;
 }
 
-// ─── Puter.js model fallback chain ───────────────────────────────────────────
-const MODEL_CHAIN = [
-  "gemini-3.1-pro-preview",
-  "x-ai/grok-4.6",
-  "gpt-5.4-nano",
-] as const;
 
-// ─── Suggestion chips ────────────────────────────────────────────────────────
-const SUGGESTIONS = [
-  "What is the current PM2.5?",
-  "Explain atmospheric inversion",
-  "Which fire sources affect Delhi?",
-  "How does the 72-hour forecast work?",
-];
-
-// ─── Puter global ────────────────────────────────────────────────────────────
-declare global {
-  interface Window {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    puter: any;
-  }
-}
-function getPuter() {
-  return typeof window !== "undefined" && window.puter ? window.puter : null;
-}
 
 // ─── System prompt ────────────────────────────────────────────────────────────
 function buildSystemPrompt(ctx: VayuContext): string {
@@ -75,33 +51,52 @@ ${dataSnippet}
 TONE: Friendly, concise, scientifically accurate. Use plain language. Use 🌫️ 🔥 💨 sparingly.`;
 }
 
-// ─── Streaming AI with fallback ───────────────────────────────────────────────
+// ─── Suggestion chips ────────────────────────────────────────────────────────
+const SUGGESTIONS = [
+  "What is the current PM2.5?",
+  "Explain atmospheric inversion",
+  "Which fire sources affect Delhi?",
+  "How does the 72-hour forecast work?",
+];
+
+// ─── Streaming AI with backend ───────────────────────────────────────────────
 async function chatWithFallback(
   messages: Array<{ role: string; content: string }>,
   onToken: (t: string) => void
 ): Promise<void> {
-  const puter = getPuter();
-  if (!puter) throw new Error("Puter.js not loaded yet. Please try again in a moment.");
-
   let lastError: Error | null = null;
-  for (const model of MODEL_CHAIN) {
-    try {
-      const response = await puter.ai.chat(messages, { model, stream: true });
-      for await (const part of response) {
-        const token =
-          part?.text ??
-          part?.message?.content?.[0]?.text ??
-          part?.choices?.[0]?.delta?.content ??
-          "";
-        if (token) onToken(token);
-      }
-      return;
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      console.warn(`[VayuAI] ${model} failed:`, lastError.message);
+  try {
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Server error: ${response.status}`);
     }
+
+    if (!response.body) throw new Error("No response body");
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    
+    let done = false;
+    while (!done) {
+      const { value, done: readerDone } = await reader.read();
+      done = readerDone;
+      if (value) {
+        const text = decoder.decode(value, { stream: true });
+        onToken(text);
+      }
+    }
+    return;
+  } catch (err) {
+    lastError = err instanceof Error ? err : new Error(String(err));
+    console.warn(`[VayuAI] chat failed:`, lastError.message);
   }
-  throw lastError ?? new Error("All AI models failed. Please try again.");
+  throw lastError ?? new Error("AI service unavailable. Please try again.");
 }
 
 // ─── Markdown-lite renderer ───────────────────────────────────────────────────
@@ -133,20 +128,10 @@ export default function ChatbotWidget() {
   const [isLoading, setIsLoading] = useState(false);
   const [vayuCtx, setVayuCtx] = useState<VayuContext>({});
   const [ctxLoaded, setCtxLoaded] = useState(false);
-  const [puterReady, setPuterReady] = useState(false);
   const [showHint, setShowHint] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const systemPromptRef = useRef<string>("");
-
-  // Wait for Puter.js
-  useEffect(() => {
-    const check = () => {
-      if (getPuter()) setPuterReady(true);
-      else setTimeout(check, 400);
-    };
-    check();
-  }, []);
 
   // Hide hint after 5s
   useEffect(() => {
@@ -175,9 +160,9 @@ export default function ChatbotWidget() {
       if (forecastRes.status === "fulfilled") {
         const forecast = forecastRes.value?.forecast ?? [];
         if (forecast.length > 0) {
-          const h24 = forecast.find((f: { hour?: number }) => f.hour === 24) ?? forecast[0];
-          ctx.currentPM25 = Math.round(h24.pm25_ug_m3 ?? 0);
-          ctx.currentAQI = Math.round(h24.aqi ?? 0);
+          const h24 = (forecast.length > 24 ? forecast[24] : forecast[0]) || {};
+          ctx.currentPM25 = typeof h24.pm25_ug_m3 === 'number' ? Math.round(h24.pm25_ug_m3) : (typeof h24.pm25 === 'number' ? Math.round(h24.pm25) : 0);
+          ctx.currentAQI = typeof h24.aqi === 'number' ? Math.round(h24.aqi) : 0;
           const peak = forecast.reduce(
             (mx: { aqi: number; timestamp: string }, f: { aqi: number; timestamp: string }) =>
               f.aqi > mx.aqi ? f : mx,
@@ -189,7 +174,7 @@ export default function ChatbotWidget() {
       if (inversionRes.status === "fulfilled") ctx.inversionCategory = inversionRes.value?.category;
       if (sourcesRes.status === "fulfilled") {
         const src = (sourcesRes.value?.sources ?? [])[0];
-        if (src) ctx.topSource = `Cluster at (${src.centroid_lat?.toFixed(2)}, ${src.centroid_lon?.toFixed(2)}) FRP ${src.total_frp?.toFixed(0)} MW`;
+        if (src) ctx.topSource = `Cluster at (${src.centroid?.lat?.toFixed(2) ?? 'N/A'}, ${src.centroid?.lon?.toFixed(2) ?? 'N/A'}) FRP ${src.frp_sum?.toFixed(0) ?? 'N/A'} MW`;
       }
       setVayuCtx(ctx);
       systemPromptRef.current = buildSystemPrompt(ctx);
@@ -441,7 +426,7 @@ export default function ChatbotWidget() {
                   </span>
                 </div>
                 <div className="text-[11px]" style={{ color: "rgba(156,163,175,0.75)" }}>
-                  {isSpeaking ? "Speaking…" : isLoading ? "Thinking…" : puterReady ? "VayuSangam Assistant" : "Loading AI…"}
+                  {isSpeaking ? "Speaking…" : isLoading ? "Thinking…" : "VayuSangam Assistant"}
                 </div>
               </div>
 
@@ -519,16 +504,16 @@ export default function ChatbotWidget() {
                 ref={inputRef}
                 id="vayu-chat-input"
                 className="vs-input flex-1 rounded-xl px-3.5 py-2 text-sm"
-                placeholder={puterReady ? "Ask about air quality…" : "Loading AI…"}
+                placeholder="Ask about air quality…"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                disabled={isLoading || !puterReady}
+                disabled={isLoading}
                 autoComplete="off"
               />
               <button
                 onClick={() => sendMessage(input)}
-                disabled={isLoading || !puterReady || !input.trim()}
+                disabled={isLoading || !input.trim()}
                 className="vs-send w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
                 id="vayu-chat-send"
               >
@@ -541,7 +526,7 @@ export default function ChatbotWidget() {
 
             {/* Footer */}
             <div className="flex-shrink-0 text-center text-[10px] pb-1.5" style={{ color: "rgba(107,114,128,0.5)" }}>
-              Powered by Puter.js · VayuSangam only
+              Powered by VayuSangam AI
             </div>
           </div>
         )}

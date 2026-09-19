@@ -4,7 +4,6 @@ import NavBar from './components/NavBar';
 import GrapBanner from './components/GrapBanner';
 import { ThemeProvider } from './components/ThemeProvider';
 import localFont from 'next/font/local';
-import Script from 'next/script';
 import dynamic from 'next/dynamic';
 
 // ChatbotWidget & WelcomeTutorial are client-only (need window, localStorage, DOM queries).
@@ -26,8 +25,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.className} min-h-screen flex flex-col antialiased bg-background text-foreground`}>
-        {/* Puter.js — free serverless AI inference (no API key required) */}
-        <Script src="https://js.puter.com/v2/" strategy="beforeInteractive" />
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
           <GrapBanner />
           <NavBar />

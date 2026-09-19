@@ -74,10 +74,10 @@ export default function StationHeatmap() {
   });
 
   return (
-    <div className="mt-6 bg-panel rounded-2xl border border-panelBorder p-6 shadow-lg overflow-hidden flex flex-col">
+    <div className="bg-panel rounded-2xl border border-panelBorder p-6 shadow-xl relative overflow-hidden flex flex-col h-full transition-all hover:shadow-2xl">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
         <h3 className="text-lg font-semibold flex items-center gap-2 text-foreground">
-          <MapPin className="w-5 h-5 text-teal-500 dark:text-teal-400" /> Station PM2.5 Timeline (00:00 - 23:00)
+          <MapPin className="w-5 h-5 text-teal-500 dark:text-teal-400 drop-shadow-sm" /> Station PM2.5 Timeline (00:00 - 23:00)
         </h3>
 
         {/* CITY FILTER TABS */}

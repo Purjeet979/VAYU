@@ -478,3 +478,50 @@ def get_cams_comparison(district: str = "Delhi", hour: int = 0):
         "reason": "Accumulating historical data for training"
     }
 
+
+
+from fastapi.responses import StreamingResponse
+from fastapi import Request, HTTPException
+import os
+from groq import AsyncGroq
+from dotenv import load_dotenv
+
+@app.post('/api/chat')
+async def chat_endpoint(request: Request):
+    data = await request.json()
+    messages = data.get('messages', [])
+    
+    load_dotenv()
+    groq_key = os.environ.get('GROQ_API_KEY')
+    
+    if not groq_key:
+        raise HTTPException(status_code=500, detail="API Key not found. Please set GROQ_API_KEY in your environment.")
+        
+    try:
+        client = AsyncGroq(api_key=groq_key)
+        
+        # Enforce strong constraints
+        system_constraint = {
+            'role': 'system',
+            'content': 'STRICT CONSTRAINT: You are strictly limited to answering questions related to the VayuSangam project, air quality, pollution, PM2.5, AQI, and atmospheric science in Delhi NCR. If the user asks about ANYTHING ELSE (like coding, history, casual chat, math, etc.), you MUST decline politely and state you only answer Air Quality questions. DO NOT provide general knowledge answers outside this scope.'
+        }
+        
+        # Insert constraint after the first system message, or at the start
+        if messages and messages[0]['role'] == 'system':
+            messages.insert(1, system_constraint)
+        else:
+            messages.insert(0, system_constraint)
+            
+        async def generate():
+            stream = await client.chat.completions.create(
+                model='llama-3.1-8b-instant',
+                messages=messages,
+                stream=True
+            )
+            async for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+                    
+        return StreamingResponse(generate(), media_type='text/plain')
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

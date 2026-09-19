@@ -49,11 +49,18 @@ class AirQualitySource(ABC):
                 metrics["stale"] += 1
                 continue
                 
-            # Bounds checking for PM2.5 and PM10
-            pm25 = record.get("pm25")
-            if pm25 is not None and (pm25 < 0 or pm25 > 3000):
-                metrics["invalid"] += 1
-                continue
+            # Defensive clamping against sensor calibration drift
+            # If values are slightly negative, clamp them to 0 rather than dropping
+            # the entire row (which would lose other valid pollutants)
+            for pol in ["pm25", "pm10", "no2", "o3", "so2", "co"]:
+                val = record.get(pol)
+                if val is not None:
+                    if val < 0:
+                        record[pol] = 0.0
+                    # For extreme spikes (>3000), we probably want to drop the whole record 
+                    # as the sensor is completely busted, but we'll just drop the field for safety
+                    elif val > 3000:
+                        record[pol] = None
                 
             # Normalize
             record["source"] = self.name
