@@ -513,14 +513,17 @@ async def chat_endpoint(request: Request):
             messages.insert(0, system_constraint)
             
         async def generate():
-            stream = await client.chat.completions.create(
-                model='llama-3.1-8b-instant',
-                messages=messages,
-                stream=True
-            )
-            async for chunk in stream:
-                if chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
+            try:
+                stream = await client.chat.completions.create(
+                    model='llama-3.1-8b-instant',
+                    messages=messages,
+                    stream=True
+                )
+                async for chunk in stream:
+                    if chunk.choices[0].delta.content is not None:
+                        yield chunk.choices[0].delta.content
+            except Exception as e:
+                yield f"\n\n⚠️ **VayuAI Error:** Cannot connect to AI provider. Please ensure you have generated a NEW Groq API key and pasted it into your `.env` file! \n*(Detail: {str(e)})*"
                     
         return StreamingResponse(generate(), media_type='text/plain')
     except Exception as e:

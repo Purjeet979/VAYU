@@ -87,7 +87,20 @@ flowchart TD
 
 ---
 
-## 5. API Key Management
+## 5. Crontab & Government API Fallback Mechanism
+
+A dedicated background **crontab scheduler** is responsible for constantly fetching air quality data from government APIs every 15 minutes. This completely shields the user interface from slow API response times.
+
+However, government APIs are notoriously prone to prolonged outages. If the government side fails and the crontab is unable to fetch data for an extended period:
+1. **No ML Corruption**: The system refuses to fabricate data to fill the gap.
+2. **Graceful UI Degradation**: The UI gracefully falls back to showing **Demo/Synthetic Data** instead of crashing, hanging, or showing wildly inaccurate ML predictions based on stale data.
+3. **Automatic Recovery**: The crontab continues to ping the government APIs in the background. Once the APIs come back online and the crontab successfully collects a fresh, unbroken 24-hour history from the **last good fetch**, the system seamlessly shifts the UI back to 100% Real Live ML Predictions.
+
+This ensures the user always has a smooth, fully-functional interface, even during complete government API blackouts.
+
+---
+
+## 6. API Key Management
 
 We tackle API key management securely and dynamically:
 * All keys are stored securely in a `.env` file (e.g., `CPCB_API_KEY`, `WAQI_API_KEY`, `OPENAQ_API_KEY`).
@@ -96,7 +109,7 @@ We tackle API key management securely and dynamically:
 
 ---
 
-## 6. Future Improvements
+## 7. Future Improvements
 
 To further enhance the robustness and scalability of VayuSangam, the following improvements are planned:
 

@@ -7,6 +7,7 @@ VayuSangam is an advanced, coupled 72-hour air quality and weather forecasting s
 - **Inversion & Trapping Intelligence**: Automated detection of Planetary Boundary Layer (PBLH) dynamics and stagnation.
 - **Source Intelligence (Fires & HCHO)**: Clustering of active FIRMS biomass burning data and Tropomi formaldehyde anomalies.
 - **Interactive Dashboard & Maps**: Real-time KPI tracking and interactive web mapping using Next.js and Leaflet.
+- **VayuAI Chatbot**: An AI-powered intelligent assistant built on Groq API and Llama-3.1 to answer dynamic questions about Delhi NCR's air quality, forecasts, and pollution sources.
 
 ## Tech Stack
 - **Frontend**: Next.js 14, React 18, Tailwind CSS, Recharts, React-Leaflet
