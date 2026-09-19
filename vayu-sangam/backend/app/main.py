@@ -483,10 +483,11 @@ def get_cams_comparison(district: str = "Delhi", hour: int = 0):
 from fastapi.responses import StreamingResponse
 from fastapi import Request, HTTPException
 import os
+import re
 from groq import AsyncGroq
 from dotenv import load_dotenv
 
-@app.post('/api/chat')
+@app.post('/api/chat-legacy')
 async def chat_endpoint(request: Request):
     data = await request.json()
     messages = data.get('messages', [])
@@ -528,3 +529,114 @@ async def chat_endpoint(request: Request):
         return StreamingResponse(generate(), media_type='text/plain')
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _local_chat_answer(messages: list[dict]) -> str | None:
+    """Answer common factual questions from backend data without an LLM."""
+    user_messages = [
+        item.get('content', '').strip()
+        for item in messages
+        if item.get('role') == 'user' and isinstance(item.get('content'), str)
+    ]
+    if not user_messages:
+        return None
+
+    question = user_messages[-1].lower()
+    asks_pm25 = bool(re.search(r'pm\s*2\.?5|pm25|particulate', question))
+    asks_aqi = 'aqi' in question or 'air quality index' in question
+    asks_current = bool(re.search(r'current|right now|abhi|latest|आज|अभी', question))
+    asks_forecast = bool(re.search(r'forecast|next|tomorrow|hour|घंट', question))
+
+    if (asks_pm25 or asks_aqi) and (asks_current or not asks_forecast):
+        try:
+            rows = cached_forecast(72).get('forecast', [])
+            row = next((item for item in rows if isinstance(item, dict)), None)
+            if row is None:
+                return 'Current air-quality data is temporarily unavailable.'
+            pm25 = row.get('pm25_ug_m3', row.get('pm25'))
+            aqi = row.get('aqi')
+            timestamp = row.get('timestamp') or 'the latest available reading'
+            parts = []
+            if asks_pm25 and isinstance(pm25, (int, float)):
+                parts.append(f'PM2.5 is {float(pm25):.1f} µg/m³')
+            if asks_aqi and isinstance(aqi, (int, float)):
+                parts.append(f'AQI is {float(aqi):.0f}')
+            if parts:
+                return f"{' and '.join(parts)} based on {timestamp}."
+            return 'The latest air-quality record does not contain a valid PM2.5/AQI value.'
+        except Exception:
+            return 'Current air-quality data is temporarily unavailable.'
+
+    if 'inversion' in question or 'pblh' in question or 'atmospheric trapping' in question:
+        try:
+            result = cached_inversion(24)
+            category = result.get('category') or result.get('status')
+            if category:
+                return f'The current atmospheric inversion/trapping status is {category}.'
+        except Exception:
+            return 'Inversion data is temporarily unavailable.'
+
+    return None
+
+
+@app.post('/api/chat')
+async def chat_endpoint_v2(request: Request):
+    """Use local data answers first, then stream Groq for conversational questions."""
+    load_dotenv()
+    try:
+        data = await request.json()
+    except Exception as error:
+        raise HTTPException(status_code=400, detail='Chat request must contain valid JSON.') from error
+
+    raw_messages = data.get('messages', []) if isinstance(data, dict) else []
+    if not isinstance(raw_messages, list) or not raw_messages:
+        raise HTTPException(status_code=400, detail='Chat request must include at least one message.')
+
+    messages = []
+    for message in raw_messages[-30:]:
+        if not isinstance(message, dict):
+            continue
+        role = message.get('role')
+        content = message.get('content')
+        if role in {'system', 'user', 'assistant'} and isinstance(content, str) and content.strip():
+            messages.append({'role': role, 'content': content[:8000]})
+    if not messages:
+        raise HTTPException(status_code=400, detail='Chat messages are empty or invalid.')
+
+    local_answer = _local_chat_answer(messages)
+    if local_answer:
+        return StreamingResponse(iter([local_answer]), media_type='text/plain')
+
+    groq_key = os.environ.get('GROQ_API_KEY', '').strip()
+    if not groq_key:
+        raise HTTPException(
+            status_code=503,
+            detail='This question needs the AI assistant, but GROQ_API_KEY is not configured on the backend. Data-based questions still work without it.',
+        )
+
+    system_constraint = {
+        'role': 'system',
+        'content': 'STRICT CONSTRAINT: Answer only VayuSangam, Delhi NCR air quality, pollution, AQI, PM2.5, forecasting, or atmospheric-science questions. Politely decline unrelated questions.'
+    }
+    if messages[0]['role'] == 'system':
+        messages = [messages[0], system_constraint, *messages[1:]]
+    else:
+        messages = [system_constraint, *messages]
+
+    try:
+        client = AsyncGroq(api_key=groq_key)
+        model = os.environ.get('GROQ_MODEL', 'llama-3.1-8b-instant')
+        stream = await client.chat.completions.create(model=model, messages=messages, stream=True)
+    except Exception as error:
+        raise HTTPException(status_code=502, detail='AI provider request failed. Check GROQ_API_KEY and GROQ_MODEL on the backend.') from error
+
+    async def generate():
+        try:
+            async for chunk in stream:
+                content = chunk.choices[0].delta.content
+                if content:
+                    yield content
+        except Exception:
+            yield '\n\nVayuAI could not finish the response. Please try again.'
+
+    return StreamingResponse(generate(), media_type='text/plain')

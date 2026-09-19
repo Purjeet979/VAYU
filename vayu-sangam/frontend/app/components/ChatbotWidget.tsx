@@ -74,7 +74,7 @@ async function chatWithFallback(
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `Server error: ${response.status}`);
+      throw new Error(errorData.detail || errorData.error || `Chat service error (${response.status})`);
     }
 
     if (!response.body) throw new Error("No response body");
