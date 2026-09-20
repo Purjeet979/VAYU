@@ -53,7 +53,16 @@ export function getScientificStatus(dataSource: string, scientificStatus: string
   };
 }
 
-export function getPollutantAvailability(forecast: any[]) {
+interface ForecastData {
+  pm25_ug_m3?: number | null;
+  pm10_ug_m3?: number | null;
+  no2_ug_m3?: number | null;
+  o3_ug_m3?: number | null;
+  so2_ug_m3?: number | null;
+  co_mg_m3?: number | null;
+}
+
+export function getPollutantAvailability(forecast: ForecastData[]) {
   return {
     pm25: forecast.some(f => f.pm25_ug_m3 != null),
     pm10: forecast.some(f => f.pm10_ug_m3 != null),
