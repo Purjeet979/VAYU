@@ -21,6 +21,7 @@ import { getTrendArrow, getUncertaintyMessage, getScientificStatus, getPollutant
 type ForecastPoint = {
   timestamp: string;
   aqi: number;
+  category?: string;
   aqi_lower?: number | null;
   aqi_upper?: number | null;
   pm25_ug_m3?: number | null;
