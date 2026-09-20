@@ -29,7 +29,7 @@ export function getUncertaintyMessage(lowerBound: number, upperBound: number, aq
 }
 
 export function getScientificStatus(dataSource: string, scientificStatus: string, currentAQI: number | null, historyCount: number | null) {
-  if (dataSource === 'bundled_demo_dataset' || scientificStatus.includes('insufficient_data')) {
+  if (dataSource === 'bundled_demo_dataset' || dataSource === 'cached_backup' || scientificStatus.includes('insufficient_data')) {
     // Explicitly ignore currentAQI during fallback
     if (historyCount !== null) {
       return {
@@ -39,7 +39,9 @@ export function getScientificStatus(dataSource: string, scientificStatus: string
     } else {
       // Non-numeric reason like "Exception in live inference"
       return {
-        simple: `⚠️ Abhi technical issue ki wajah se sample data dikha rahe hain`,
+        simple: dataSource === 'cached_backup' 
+          ? `⚠️ Abhi naya data nahi mil raha, purana cached backup dikha rahe hain` 
+          : `⚠️ Abhi technical issue ki wajah se sample data dikha rahe hain`,
         technical: scientificStatus
       };
     }

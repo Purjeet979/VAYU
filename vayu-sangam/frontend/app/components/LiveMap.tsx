@@ -91,7 +91,7 @@ function MapController({ searchedLocation, onZoomOut, setMapInstance }: { search
   }, [map, setMapInstance]);
 
   useMapEvent('zoomend', () => {
-    if (map.getZoom() < 9) setTimeout(() => onZoomOut(), 0); // Defer state update to avoid Leaflet race conditions
+    if (map.getZoom() < 9) setTimeout(() => onZoomOut(), 250); // Defer state update to avoid Leaflet race conditions
   });
   
   useMapEvent('click', () => {
@@ -243,7 +243,7 @@ export default function LiveMap() {
       <LocationSearch onLocationFound={(lat, lon) => setSearchedLocation([lat, lon])} />
 
 
-      <MapContainer center={DELHI_CENTER} zoom={10} minZoom={5} maxZoom={13} className="absolute inset-0 z-10 h-full w-full">
+      <MapContainer preferCanvas={true} center={DELHI_CENTER} zoom={10} minZoom={5} maxZoom={13} className="absolute inset-0 z-10 h-full w-full">
         <MapController searchedLocation={searchedLocation} onZoomOut={() => setSelectedDistrict(null)} setMapInstance={setMapInstance} />
         <TileLayer url={TILE_URL} attribution='&copy; OpenStreetMap' />
 

@@ -21,7 +21,7 @@ export default function NavBar() {
     fetch('/api/health', { cache: 'no-store', signal: controller.signal })
       .then(res => res.json())
       .then(data => {
-        setMode(data?.mode === 'live' ? 'live' : 'demo');
+        setMode(data?.mode || 'demo');
       })
       .catch(() => setMode('unknown'))
       .finally(() => window.clearTimeout(timeout));
@@ -44,8 +44,8 @@ export default function NavBar() {
         </Link>
         {mode && (
           <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-gray-900 border border-gray-700 text-xs font-medium text-gray-300">
-            <span className={`w-2 h-2 rounded-full ${mode === 'live' ? 'bg-green-500 animate-pulse' : mode === 'cached' ? 'bg-yellow-500' : 'bg-gray-500'}`} />
-            <span className="capitalize">{mode === 'demo' ? 'Demo Data' : mode === 'cached' ? 'Cached Data' : mode}</span>
+            <span className={`w-2 h-2 rounded-full ${mode === 'live_full' ? 'bg-green-500 animate-pulse' : mode === 'live_partial' ? 'bg-yellow-400 animate-pulse' : mode === 'cached' ? 'bg-yellow-600' : 'bg-gray-500'}`} />
+            <span className="capitalize">{mode === 'demo' ? 'Demo Data' : mode === 'live_full' ? 'Live Data' : mode === 'live_partial' ? 'Live (Partial)' : mode === 'cached' ? 'Cached Data' : mode}</span>
           </div>
         )}
       </div>

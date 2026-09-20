@@ -32,7 +32,9 @@ export default function StationForecastPanel({ hour }: { hour: number }) {
   }, []);
 
   const stationData = stations.find(s => s.station_id === selectedStation);
-  const currentForecast = stationData?.forecast?.find((f) => f.hour === hour);
+  const currentForecast = stationData?.forecast?.length ? stationData.forecast.reduce((prev, curr) => {
+    return Math.abs(curr.hour - hour) < Math.abs(prev.hour - hour) ? curr : prev;
+  }) : undefined;
 
   return (
     <div className="bg-panel rounded-2xl border border-panelBorder p-6 shadow-xl relative overflow-hidden flex flex-col h-full max-h-[500px] transition-all hover:shadow-2xl">
@@ -79,12 +81,12 @@ export default function StationForecastPanel({ hour }: { hour: number }) {
             <div className="grid grid-cols-2 gap-4 text-center mt-auto">
               <div className="bg-background/80 p-5 rounded-2xl border border-panelBorder shadow-sm transition-transform hover:scale-105 flex flex-col items-center justify-center relative overflow-hidden group">
                 <div className="absolute inset-0 bg-gradient-to-br from-teal-500/5 to-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                <div className="text-gray-500 dark:text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1 z-10">AQI (T+{hour})</div>
+                <div className="text-gray-500 dark:text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1 z-10">AQI (T+{currentForecast.hour})</div>
                 <div className="text-4xl font-black text-foreground z-10">{currentForecast.aqi}</div>
               </div>
               <div className="bg-background/80 p-5 rounded-2xl border border-panelBorder shadow-sm transition-transform hover:scale-105 flex flex-col items-center justify-center relative overflow-hidden group">
                 <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-pink-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                <div className="text-gray-500 dark:text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1 z-10">PM2.5 (T+{hour})</div>
+                <div className="text-gray-500 dark:text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1 z-10">PM2.5 (T+{currentForecast.hour})</div>
                 <div className="text-4xl font-black text-foreground z-10">
                   {currentForecast.pm25 !== null && currentForecast.pm25 !== undefined 
                     ? currentForecast.pm25.toFixed(1) 

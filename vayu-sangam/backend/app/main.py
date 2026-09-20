@@ -51,9 +51,16 @@ def get_health():
     """Validate that all bundled demo engines and assets are loadable."""
     try:
         from .api_service import get_data_confidence
+        from backend.scripts.cpcb_history_store import get_history_count
+        
         confidence = get_data_confidence(None)
-        if "live" in confidence.lower():
-            actual_mode = "live"
+        history = get_history_count()
+        
+        if history.get("status") == "sufficient":
+            if "partial" in confidence.lower():
+                actual_mode = "live_partial"
+            else:
+                actual_mode = "live_full"
         elif "cache" in confidence.lower():
             actual_mode = "cached"
         else:

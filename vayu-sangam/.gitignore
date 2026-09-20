@@ -34,3 +34,5 @@ process_*.py
 openaq_*.json
 *.joblib
 check_db.py
+# Demo Script
+demo_pitch_script.md

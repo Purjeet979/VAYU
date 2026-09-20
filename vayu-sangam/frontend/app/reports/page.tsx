@@ -176,7 +176,7 @@ export default function ReportsPage() {
     const map: Record<string, number> = {};
     if (computedGeo?.features) {
        for (const f of computedGeo.features) {
-          if (f.properties.value) map[f.properties.district] = Math.round(f.properties.value);
+          if (f.properties.value) map[f.properties.name] = Math.round(f.properties.value);
        }
     }
     return map;
@@ -223,6 +223,7 @@ export default function ReportsPage() {
         stationCount: c.stationCount,
         validAqiCount: c.aqiVals.length,
         avgAqi: displayAqi,
+        isEstimated: c.stationCount === 0 && computedAqi !== undefined,
         avgPm25: avg(c.pm25Vals) || '-',
         avgPm10: avg(c.pm10Vals) || '-',
         avgNo2: avg(c.no2Vals) || '-',
@@ -510,6 +511,11 @@ export default function ReportsPage() {
                         <div className="flex items-center gap-2.5">
                           <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: getCityTheme(row.city).hex }} />
                           <span>{row.city}</span>
+                          {row.isEstimated && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-orange-500/10 text-orange-500 border border-orange-500/20 uppercase font-bold tracking-wider" title="Interpolated from regional map data">
+                              ≈ Estimated
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="p-4 text-center text-gray-500 dark:text-gray-400">{row.stationCount}</td>
@@ -783,6 +789,11 @@ export default function ReportsPage() {
                                   <div className="flex items-center gap-2.5">
                                     <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: theme.hex }} />
                                     <span>{stats.city}</span>
+                                    {stats.isEstimated && (
+                                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-orange-500/10 text-orange-500 border border-orange-500/20 uppercase font-bold tracking-wider" title="Interpolated from regional map data">
+                                        ≈ Estimated
+                                      </span>
+                                    )}
                                     {isPrimary && (
                                       <span 
                                         className="ml-2 text-[10px] font-semibold px-2 py-0.5 rounded-full border uppercase"

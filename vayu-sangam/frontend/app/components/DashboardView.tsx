@@ -308,7 +308,9 @@ export default function DashboardView() {
                                         <div key={index} className="flex items-center justify-between gap-4 mb-1">
                                           <span className="text-sm font-medium" style={{ color: entry.color }}>{entry.name === 'AQI' && emoji ? `${emoji} ${entry.name}` : entry.name}</span>
                                           <span className="text-sm font-bold text-foreground">
-                                            {entry.value !== null && entry.value !== undefined ? Number(entry.value).toFixed(1) : '-'}
+                                            {Array.isArray(entry.value) 
+                                              ? `${Number(entry.value[0]).toFixed(1)} - ${Number(entry.value[1]).toFixed(1)}` 
+                                              : entry.value !== null && entry.value !== undefined ? Number(entry.value).toFixed(1) : '-'}
                                           </span>
                                         </div>
                                       );
