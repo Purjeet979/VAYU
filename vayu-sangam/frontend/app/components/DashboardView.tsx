@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from 'react';
-import { Activity, AlertTriangle, Cpu, Layers, Lightbulb, ShieldAlert, TrendingDown, TrendingUp, Wind } from 'lucide-react';
+import { useEffect, useState, useMemo } from 'react';
+import { Activity, AlertTriangle, Cpu, Layers, Lightbulb, ShieldAlert, TrendingDown, TrendingUp, Wind, Info } from 'lucide-react';
 import { CartesianGrid, Legend, Line, ComposedChart, Area, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine } from 'recharts';
 
 import CorrelationMatrix from './CorrelationMatrix';
@@ -16,6 +16,7 @@ import EarlyWarningBanner from './EarlyWarningBanner';
 import CamsCrossValidation from './CamsCrossValidation';
 import TwoLayerCard from './TwoLayerCard';
 import { fetchJson } from '../lib/api';
+import { getTrendArrow, getUncertaintyMessage, getScientificStatus, getPollutantAvailability, categoryToEmoji } from '../utils/forecastMessages';
 
 type ForecastPoint = {
   timestamp: string;
@@ -147,6 +148,33 @@ export default function DashboardView() {
     return () => window.clearTimeout(timer);
   }, []);
 
+  // --- DYNAMIC FORECAST COMPUTATIONS ---
+  const pollutantAvail = useMemo(() => getPollutantAvailability(forecast), [forecast]);
+  
+  const currentAQI = forecast[0]?.aqi ?? null;
+  const forecast24h = forecast.slice(0, 24);
+  const avg24h = forecast24h.length ? forecast24h.reduce((acc, curr) => acc + (curr.aqi || 0), 0) / forecast24h.length : 0;
+  
+  const trendArrow = useMemo(() => getTrendArrow(currentAQI || 0, avg24h), [currentAQI, avg24h]);
+
+  const uncertaintyMsg = useMemo(() => {
+    if (!forecast.length) return '';
+    const avgLower = forecast.reduce((acc, f) => acc + (f.aqi_lower || 0), 0) / forecast.length;
+    const avgUpper = forecast.reduce((acc, f) => acc + (f.aqi_upper || 0), 0) / forecast.length;
+    return getUncertaintyMessage(avgLower, avgUpper, avg24h || currentAQI || 1);
+  }, [forecast, avg24h, currentAQI]);
+
+  const historyMatch = scientificStatus?.match(/(\d+)\/24h/);
+  const actualHistoryCount = historyMatch ? parseInt(historyMatch[1]) : 24;
+
+  const dynamicSciStatus = useMemo(() => getScientificStatus(
+    usingBackup ? 'bundled_demo_dataset' : 'xgboost_live_inference',
+    scientificStatus || '',
+    currentAQI,
+    actualHistoryCount
+  ), [usingBackup, scientificStatus, currentAQI, actualHistoryCount]);
+
+
   return (
     <div className="max-w-7xl mx-auto px-6 flex flex-col gap-8">
       <div className="flex justify-between items-end">
@@ -190,40 +218,52 @@ export default function DashboardView() {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
-              <div className="bg-panel rounded-2xl border border-panelBorder p-6 shadow-xl h-full">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-lg font-semibold flex items-center gap-2 text-foreground">
-                    <Activity className="w-5 h-5 text-teal-500 dark:text-teal-400" /> 72-Hour Trajectory
-                  </h2>
-                  <div className="flex items-center gap-4">
-                    <select 
-                      className="bg-background border border-panelBorder rounded-lg px-3 py-1.5 text-sm text-foreground focus:ring-2 focus:ring-indigo-500 outline-none"
-                      value={selectedPollutant}
-                      onChange={(e) => setSelectedPollutant(e.target.value)}
-                    >
-                      <option value="pm25">PM2.5 (ug/m³)</option>
-                      <option value="pm10">PM10 (ug/m³)</option>
-                      <option value="no2">NO2 (ug/m³)</option>
-                      <option value="o3">O3 (ug/m³)</option>
-                      <option value="so2">SO2 (ug/m³)</option>
-                      <option value="co">CO (mg/m³)</option>
-                    </select>
-                    {confidence && (
-                      <div className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-2 ${
-                        confidence === 'low' 
-                        ? 'bg-red-500/10 border-red-500/30 text-red-400' 
-                        : 'bg-green-500/10 border-green-500/30 text-green-400'
-                      }`}>
-                        {confidence === 'low' ? '⚠️ Low Confidence' : '✅ High Confidence'}
-                      </div>
-                    )}
+                <div className="bg-panel rounded-2xl border border-panelBorder p-6 shadow-xl h-full">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-4">
+                    <h2 className="text-lg font-semibold flex items-center gap-2 text-foreground">
+                      <Activity className="w-5 h-5 text-teal-500 dark:text-teal-400" /> 
+                      72-Hour Trajectory 
+                      <span className="text-sm font-medium ml-1 text-gray-500 dark:text-gray-400 border border-panelBorder px-2 py-0.5 rounded-full bg-background">{trendArrow.icon} {trendArrow.text}</span>
+                    </h2>
+                    <div className="flex items-center gap-4">
+                      <select 
+                        className="bg-background border border-panelBorder rounded-lg px-3 py-1.5 text-sm text-foreground focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm cursor-pointer"
+                        value={selectedPollutant}
+                        onChange={(e) => setSelectedPollutant(e.target.value)}
+                      >
+                        {pollutantAvail.pm25 && <option value="pm25">🌫️ PM2.5</option>}
+                        {pollutantAvail.pm10 && <option value="pm10">🌫️ PM10</option>}
+                        {pollutantAvail.no2 && <option value="no2">🚗 NO2</option>}
+                        {pollutantAvail.o3 && <option value="o3">☀️ O3</option>}
+                        {pollutantAvail.so2 && <option value="so2">🏭 SO2</option>}
+                        {pollutantAvail.co && <option value="co">🚘 CO</option>}
+                      </select>
+                    </div>
                   </div>
-                </div>
-                {scientificStatus && (
-                  <p className="text-xs text-gray-500 mb-4 border-l-2 border-indigo-500 pl-2">
-                    {scientificStatus}
-                  </p>
-                )}
+
+                  <div className="mb-6">
+                    <TwoLayerCard
+                      icon={<Info className="w-4 h-4 text-indigo-400" />}
+                      title="Forecast Status & Confidence"
+                      laymanMessage={<span className="text-sm font-semibold text-foreground">{dynamicSciStatus.simple}</span>}
+                      technicalDetails={
+                        <div className="flex flex-col gap-2">
+                          <p className="text-xs text-gray-400 border-l-2 border-indigo-500 pl-2">
+                            {dynamicSciStatus.technical}
+                          </p>
+                          {confidence && (
+                            <div className={`px-2 py-1 w-fit rounded-full text-[10px] font-bold border flex items-center gap-1 ${
+                              confidence === 'low' 
+                              ? 'bg-red-500/10 border-red-500/30 text-red-400' 
+                              : 'bg-green-500/10 border-green-500/30 text-green-400'
+                            }`}>
+                              {confidence === 'low' ? '⚠️ Low Statistical Confidence' : '✅ High Statistical Confidence'}
+                            </div>
+                          )}
+                        </div>
+                      }
+                    />
+                  </div>
                 
                 {(() => {
                   const pollutantKey = `${selectedPollutant}_ug_m3` as keyof ForecastPoint;
@@ -244,56 +284,68 @@ export default function DashboardView() {
                   }
                   
                   return (
-                    <div className="h-80 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <ComposedChart data={forecast} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="var(--panel-border)" vertical={false} />
-                          <XAxis dataKey="timestamp" stroke="#6b7280" tickFormatter={(tickItem: string) => `${new Date(tickItem).getHours()}:00`} tick={{ fontSize: 12, fill: '#6b7280' }} />
-                          <YAxis yAxisId="left" stroke="#6b7280" tick={{ fontSize: 12, fill: '#6b7280' }} />
-                          <YAxis yAxisId="right" orientation="right" stroke="#6b7280" tick={{ fontSize: 12, fill: '#6b7280' }} />
-                          <Tooltip
-                            content={({ active, payload, label }) => {
-                          if (!active || !payload?.length) return null;
+                    <div className="h-80 w-full flex flex-col">
+                      <div className="flex-grow min-h-0">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <ComposedChart data={forecast} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="var(--panel-border)" vertical={false} />
+                            <XAxis dataKey="timestamp" stroke="#6b7280" tickFormatter={(tickItem: string) => `${new Date(tickItem).getHours()}:00`} tick={{ fontSize: 12, fill: '#6b7280' }} />
+                            <YAxis yAxisId="left" stroke="#6b7280" tick={{ fontSize: 12, fill: '#6b7280' }} />
+                            <YAxis yAxisId="right" orientation="right" stroke="#6b7280" tick={{ fontSize: 12, fill: '#6b7280' }} />
+                            <Tooltip
+                              content={({ active, payload, label }) => {
+                                if (!active || !payload?.length) return null;
 
-                          return (
-                            <div className="bg-panel/95 backdrop-blur-sm border border-panelBorder p-4 rounded-xl shadow-2xl">
-                              <p className="text-gray-500 dark:text-gray-400 text-xs mb-2">{new Date(label ?? '').toLocaleString()}</p>
-                              {payload.map((entry, index) => (
-                                <div key={index} className="flex items-center justify-between gap-4 mb-1">
-                                  <span className="text-sm font-medium" style={{ color: entry.color }}>{entry.name}</span>
-                                  <span className="text-sm font-bold text-foreground">
-                                    {entry.value !== null && entry.value !== undefined ? Number(entry.value).toFixed(1) : '-'}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        }}
-                      />
-                      <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                      {forecast.some(point => typeof point.aqi_lower === 'number' && typeof point.aqi_upper === 'number') && (
-                        <Area yAxisId="left" type="monotone" dataKey={(data) => (
-                          typeof data.aqi_lower === 'number' && typeof data.aqi_upper === 'number'
-                            ? [data.aqi_lower, data.aqi_upper]
-                            : undefined
-                        )} fill="#ef4444" stroke="none" fillOpacity={0.15} name="AQI Uncertainty" />
+                                return (
+                                  <div className="bg-panel/95 backdrop-blur-sm border border-panelBorder p-4 rounded-xl shadow-2xl">
+                                    <p className="text-gray-500 dark:text-gray-400 text-xs mb-2">{new Date(label ?? '').toLocaleString()}</p>
+                                    {payload.map((entry, index) => {
+                                      // Dynamic emoji matching for AQI from category mapping
+                                      const cat = forecast.find(f => f.timestamp === label)?.category;
+                                      const emoji = cat && categoryToEmoji[cat] ? categoryToEmoji[cat] : '';
+                                      return (
+                                        <div key={index} className="flex items-center justify-between gap-4 mb-1">
+                                          <span className="text-sm font-medium" style={{ color: entry.color }}>{entry.name === 'AQI' && emoji ? `${emoji} ${entry.name}` : entry.name}</span>
+                                          <span className="text-sm font-bold text-foreground">
+                                            {entry.value !== null && entry.value !== undefined ? Number(entry.value).toFixed(1) : '-'}
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                );
+                              }}
+                            />
+                            <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                            {forecast.some(point => typeof point.aqi_lower === 'number' && typeof point.aqi_upper === 'number') && (
+                              <Area yAxisId="left" type="monotone" dataKey={(data) => (
+                                typeof data.aqi_lower === 'number' && typeof data.aqi_upper === 'number'
+                                  ? [data.aqi_lower, data.aqi_upper]
+                                  : undefined
+                              )} fill="#ef4444" stroke="none" fillOpacity={0.15} name="AQI Uncertainty" />
+                            )}
+                            <Line yAxisId="left" type="monotone" dataKey="aqi" name="AQI" stroke="#ef4444" strokeWidth={3} dot={false} activeDot={{ r: 6 }} />
+                            {forecast[hour]?.timestamp && <ReferenceLine x={forecast[hour].timestamp} stroke="#14b8a6" strokeDasharray="4 4" label={{ value: `T+${hour}`, fill: '#14b8a6', fontSize: 11 }} />}
+                            
+                            {selectedPollutant === 'pm25' && <Line yAxisId="left" type="monotone" dataKey="pm25_ug_m3" name="PM2.5" stroke="#f97316" strokeWidth={2} dot={false} />}
+                            {selectedPollutant === 'pm10' && <Line yAxisId="left" type="monotone" dataKey="pm10_ug_m3" name="PM10" stroke="#f97316" strokeWidth={2} dot={false} />}
+                            {selectedPollutant === 'no2' && <Line yAxisId="left" type="monotone" dataKey="no2_ug_m3" name="NO2" stroke="#f97316" strokeWidth={2} dot={false} />}
+                            {selectedPollutant === 'o3' && <Line yAxisId="left" type="monotone" dataKey="o3_ug_m3" name="O3" stroke="#f97316" strokeWidth={2} dot={false} />}
+                            {selectedPollutant === 'so2' && <Line yAxisId="left" type="monotone" dataKey="so2_ug_m3" name="SO2" stroke="#f97316" strokeWidth={2} dot={false} />}
+                            {selectedPollutant === 'co' && <Line yAxisId="left" type="monotone" dataKey="co_mg_m3" name="CO" stroke="#f97316" strokeWidth={2} dot={false} />}
+                            
+                            <Line yAxisId="right" type="monotone" dataKey="pbl_height_m" name="PBLH (m)" stroke="#3b82f6" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                            <Line yAxisId="left" type="monotone" dataKey="temperature_c" name="Temp (C)" stroke="#14b8a6" strokeWidth={2} dot={false} />
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      </div>
+                      {uncertaintyMsg && (
+                        <div className="mt-2 text-center text-xs text-gray-500 italic bg-background border border-panelBorder rounded py-1 px-3 w-fit mx-auto">
+                          💡 {uncertaintyMsg}
+                        </div>
                       )}
-                      <Line yAxisId="left" type="monotone" dataKey="aqi" name="AQI" stroke="#ef4444" strokeWidth={3} dot={false} activeDot={{ r: 6 }} />
-                      {forecast[hour]?.timestamp && <ReferenceLine x={forecast[hour].timestamp} stroke="#14b8a6" strokeDasharray="4 4" label={{ value: `T+${hour}`, fill: '#14b8a6', fontSize: 11 }} />}
-                      
-                      {selectedPollutant === 'pm25' && <Line yAxisId="left" type="monotone" dataKey="pm25_ug_m3" name="PM2.5" stroke="#f97316" strokeWidth={2} dot={false} />}
-                      {selectedPollutant === 'pm10' && <Line yAxisId="left" type="monotone" dataKey="pm10_ug_m3" name="PM10" stroke="#f97316" strokeWidth={2} dot={false} />}
-                      {selectedPollutant === 'no2' && <Line yAxisId="left" type="monotone" dataKey="no2_ug_m3" name="NO2" stroke="#f97316" strokeWidth={2} dot={false} />}
-                      {selectedPollutant === 'o3' && <Line yAxisId="left" type="monotone" dataKey="o3_ug_m3" name="O3" stroke="#f97316" strokeWidth={2} dot={false} />}
-                      {selectedPollutant === 'so2' && <Line yAxisId="left" type="monotone" dataKey="so2_ug_m3" name="SO2" stroke="#f97316" strokeWidth={2} dot={false} />}
-                      {selectedPollutant === 'co' && <Line yAxisId="left" type="monotone" dataKey="co_mg_m3" name="CO" stroke="#f97316" strokeWidth={2} dot={false} />}
-                      
-                      <Line yAxisId="right" type="monotone" dataKey="pbl_height_m" name="PBLH (m)" stroke="#3b82f6" strokeWidth={2} strokeDasharray="5 5" dot={false} />
-                      <Line yAxisId="left" type="monotone" dataKey="temperature_c" name="Temp (C)" stroke="#14b8a6" strokeWidth={2} dot={false} />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                </div>
-                );
+                    </div>
+                  );
               })()}
                 {note && (
                   <p className="mt-4 text-[10px] text-gray-500/70 dark:text-gray-400/70 italic text-center border-t border-panelBorder pt-2">

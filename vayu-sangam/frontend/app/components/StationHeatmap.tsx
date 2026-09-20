@@ -74,8 +74,8 @@ export default function StationHeatmap() {
   });
 
   return (
-    <div className="bg-panel rounded-2xl border border-panelBorder p-6 shadow-xl relative overflow-hidden flex flex-col h-full transition-all hover:shadow-2xl">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+    <div className="bg-panel rounded-2xl border border-panelBorder p-6 shadow-xl relative overflow-hidden flex flex-col h-full max-h-[500px] transition-all hover:shadow-2xl">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4 flex-shrink-0">
         <h3 className="text-lg font-semibold flex items-center gap-2 text-foreground">
           <MapPin className="w-5 h-5 text-teal-500 dark:text-teal-400 drop-shadow-sm" /> Station PM2.5 Timeline (00:00 - 23:00)
         </h3>
@@ -94,7 +94,7 @@ export default function StationHeatmap() {
           </button>
           {NCR_CITIES.map(city => {
             const theme = getCityTheme(city);
-            const count = Object.keys(heatmapGrid).filter(s => stationCityMap[s] === city).length;
+            const count = Object.values(stationCityMap).filter(c => c === city).length;
             if (count === 0) return null;
             const isSelected = selectedCity === city;
             return (
@@ -118,7 +118,7 @@ export default function StationHeatmap() {
         </div>
       </div>
       
-      <div className="overflow-x-auto pb-4 custom-scrollbar">
+      <div className="overflow-x-auto overflow-y-auto max-h-[400px] pb-4 custom-scrollbar flex-grow">
         <div className="min-w-max">
           <div className="flex mb-2">
             <div className="w-56 flex-shrink-0"></div>

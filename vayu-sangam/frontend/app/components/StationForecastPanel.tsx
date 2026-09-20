@@ -35,20 +35,20 @@ export default function StationForecastPanel({ hour }: { hour: number }) {
   const currentForecast = stationData?.forecast?.find((f) => f.hour === hour);
 
   return (
-    <div className="bg-panel rounded-2xl border border-panelBorder p-6 shadow-xl relative overflow-hidden flex flex-col h-full transition-all hover:shadow-2xl">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+    <div className="bg-panel rounded-2xl border border-panelBorder p-6 shadow-xl relative overflow-hidden flex flex-col h-full max-h-[500px] transition-all hover:shadow-2xl">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4 flex-shrink-0">
         <h2 className="text-lg font-semibold flex items-center gap-2 text-foreground">
           <Activity className="w-5 h-5 text-teal-500 dark:text-teal-400 drop-shadow-sm" /> 
           Station-Level Forecast
         </h2>
       </div>
-      <p className="text-xs text-gray-500 dark:text-gray-400 mb-5 font-medium bg-background px-3 py-1.5 rounded-lg border border-panelBorder inline-block w-fit">(Spatial interpolation of existing grid, not a new prediction)</p>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mb-5 font-medium bg-background px-3 py-1.5 rounded-lg border border-panelBorder inline-block w-fit flex-shrink-0">(Spatial interpolation of existing grid, not a new prediction)</p>
       
       {loading ? (
         <div className="animate-pulse h-16 bg-gray-200 dark:bg-gray-800 rounded-xl mt-4"></div>
       ) : stations.length > 0 ? (
-        <div className="flex flex-col gap-5 flex-grow">
-          <div className="relative group">
+        <div className="flex flex-col gap-5 flex-grow overflow-y-auto custom-scrollbar pr-2 pb-2">
+          <div className="relative group flex-shrink-0">
             <select 
               className="w-full bg-background border border-panelBorder text-foreground rounded-xl p-3 text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-teal-500/50 transition-all cursor-pointer shadow-sm group-hover:border-teal-500/50"
               value={selectedStation}
