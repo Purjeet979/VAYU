@@ -4,12 +4,7 @@ import NavBar from './components/NavBar';
 import GrapBanner from './components/GrapBanner';
 import { ThemeProvider } from './components/ThemeProvider';
 import localFont from 'next/font/local';
-import dynamic from 'next/dynamic';
-
-// ChatbotWidget & WelcomeTutorial are client-only (need window, localStorage, DOM queries).
-// ssr:false prevents the SSR/client style-string hydration mismatch.
-const ChatbotWidget = dynamic(() => import('./components/ChatbotWidget'), { ssr: false });
-const WelcomeTutorial = dynamic(() => import('./components/WelcomeTutorial'), { ssr: false });
+import DeferredGlobalWidgets from './components/DeferredGlobalWidgets';
 
 const geistSans = localFont({
   src: './fonts/GeistVF.woff',
@@ -29,10 +24,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <GrapBanner />
           <NavBar />
           <main className="flex-1 flex flex-col">{children}</main>
-          {/* Interactive Guide / Welcome Tutorial */}
-          <WelcomeTutorial />
-          {/* VayuAI Chatbot — floats on every page */}
-          <ChatbotWidget />
+          {/* Optional widgets load after the primary page becomes interactive. */}
+          <DeferredGlobalWidgets />
         </ThemeProvider>
       </body>
     </html>
