@@ -662,7 +662,7 @@ async def chat_endpoint_v2(request: Request):
 
     try:
         client = AsyncGroq(api_key=groq_key)
-        model = os.environ.get('GROQ_MODEL', 'llama-3.3-70b-versatile')
+        model = os.environ.get('GROQ_MODEL', 'openai/gpt-oss-20b')
         stream = await client.chat.completions.create(model=model, messages=messages, stream=True)
     except Exception as error:
         raise HTTPException(status_code=502, detail='AI provider request failed. Check GROQ_API_KEY and GROQ_MODEL on the backend.') from error
