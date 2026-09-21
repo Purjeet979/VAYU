@@ -590,6 +590,29 @@ def _local_chat_answer(messages: list[dict]) -> str | None:
         except Exception:
             return 'Inversion data is temporarily unavailable.'
 
+    if re.search(r'fire|fires|source|sources|stubble|burning', question):
+        try:
+            sources = cached_sources(24).get('sources', [])
+            if not sources:
+                return 'No active fire-source clusters are available in the latest data.'
+            top = sources[:3]
+            details = []
+            for source in top:
+                centroid = source.get('centroid') or {}
+                distance = source.get('distance_to_delhi_km')
+                score = source.get('source_score')
+                fire_count = source.get('fire_count')
+                details.append(
+                    f"cluster {source.get('cluster_id', 'unknown')} ({fire_count or 0} fire(s), "
+                    f"{float(distance):.0f} km away, score {float(score):.2f})"
+                )
+            return (
+                'The latest source-intelligence data identifies ' + ', '.join(details) +
+                '. These are heuristic fire-source indicators, not proof of direct causation.'
+            )
+        except Exception:
+            return 'Fire-source data is temporarily unavailable.'
+
     return None
 
 
