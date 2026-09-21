@@ -7,6 +7,7 @@ load_dotenv()
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from .api_service import (
     GRID_VARIABLES,
@@ -28,6 +29,9 @@ from .schemas import ScenarioRequest, ScenarioResponse
 from . import ml_explainer
 
 app = FastAPI(title="VayuSangam-AI API")
+
+# Compress large forecast/map JSON payloads before they cross the public network.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 app.add_middleware(
     CORSMiddleware,
