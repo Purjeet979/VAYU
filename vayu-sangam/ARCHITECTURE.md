@@ -25,8 +25,7 @@
 16. [Honest Data Policy (Anti-Fabrication Rules)](#16-honest-data-policy-anti-fabrication-rules)
 17. [API Key Management & Security](#17-api-key-management--security)
 18. [Technology Stack Summary](#18-technology-stack-summary)
-19. [File Structure Reference](#19-file-structure-reference)
-20. [Future Improvements](#20-future-improvements)
+19. [Future Improvements](#19-future-improvements)
 
 ---
 

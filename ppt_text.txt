@@ -1,0 +1,246 @@
+TITLE PAGE
+SMART INDIA HACKATHON 2026
+Problem Statement ID – 
+26082
+Problem Statement Title- 
+Air Pollution–Weather Coupled Forecasting System (Delhi NCR Focus)
+Theme- 
+Clean & Green Technology
+PS Category- 
+Software
+Team ID- 
+124314
+Team Name - 
+Kamchalau Coders
+
+--- Slide Boundary ---
+
+VayuSangam-AI — Physics-Coupled Weather–Chemistry Forecasting System
+Core Architecture
+How it addresses the PS
+Team
+Kamchalau Coders
+THE IDEA  
+Simulate Physics. Track Plumes. Predict Coupled AQI.
+Why VayuSangam-AI Is Different
+Two-Way Feedback Loop
+Fire-to-Pollution Link
+Inversion & Plume Dynamics
+Physics + ML Hybrid (R²=0.97)
+Counterfactual Attribution
+SHAP Explainability
+OUTCOME
+High-accuracy 72-hr AQI (R²=0.97) • Real-time fire attribution • Inversion trapping warnings • Official CPCB NAQI alerts
+KEY INNOVATION
+Two-way coupled atmospheric physics + satellite fire-wind vectors + calibrated fast ML surrogate for sub-second inference.
+A 72-hour operational forecasting engine uniting two-way WRF-Chem atmospheric coupling, real-time fire-to-pollution attribution, and an ultrafast ML surrogate (R² = 0.97).
+• Replaces disjoint met/chem models with genuine two-way atmospheric-chemical feedback loops.
+• Links satellite fires + wind vectors directly to real-time stubble smoke arrival across NCR.
+• Offloads heavy numerical physics to an ML surrogate for instant, operational inference (R² = 0.97).
+• Replaces city-blended numbers with district-specific CPCB National AQI across all 11 districts.
+• Delivers actionable GIS alerts with transparent SHAP explainability showing why pollution is rising.
+• Two-way coupled meteorology ↔ chemistry (WRF-Chem): pollution actively alters radiation, temperature & PBL dynamics (two-way feedback).
+• Real-time fire-to-pollution linkage: satellite fire data (NASA FIRMS FRP) + live wind vectors enable dynamic stubble source attribution.
+• Physics + ML hybrid engine: WRF-Chem numerical accuracy combined with XGBoost surrogate speed (R² = 0.97).
+• Hyperlocal Delhi-NCR modeling: granular forecast across all 11 real districts with an hourly 72-hour operational outlook.
+WRF-Chem dynamically couples aerosol concentrations with solar radiation and PBL collapse — pollution alters weather, not just vice versa.
+NASA FIRMS FRP + live wind vectors enable real-time source attribution and dynamic agricultural smoke tracking instead of static inventories.
+Quantifies atmospheric inversion strength, ventilation coefficients, and forward/backward plume dispersion trajectories across NCR corridors.
+WRF-Chem physical rigor combined with fast XGBoost surrogate inference, achieving R² = 0.97 calibrated on 57 CPCB ground monitors.
+Full-run vs No-Fire run isolates exact agricultural burning contribution (ΔPM2.5) across all 11 Delhi districts for targeted policy intervention.
+SHAP feature attribution decodes why AQI rises (inversion trapping vs stubble plume influx) rather than just outputting an unexplained number.
+
+--- Slide Boundary ---
+
+Team
+Kamchalau Coders
+1. Coupled Weather–Chemistry Pipeline (0–72 Hour Flow)
+   INGEST
+Sentinel-5P + FIRMS
+Open-Meteo + CPCB
+WPS regridding
+Temporal QA & sync
+Fire + wind vectors
+FRP emission rate
+Regional D1 (12km)
+Delhi D2 (3km)
+Met ↔ Chemistry
+Aerosol ↔ PBL
+Two-way feedback
+  FAST ML
+XGBoost (R²=0.97)
+Real-time inference
+DELIVERY
+72h 11-dist AQI
+GIS alerts & SHAP
+END-TO-END WORKFLOW • Free Open Satellite & Met Feeds → Fire-Wind Vectors → 2-Way WRF-Chem → Fast ML Surrogate (R²=0.97) → 72h Forecast
+2. Atmospheric Inversion & Plume Tracking Engine
+Inversion
+Plume Rise
+Trajectory
+Attribution
+Explainability
+3. Operational System Architecture & Service Delivery
+DATA PIPELINE
+Free APIs & Fallback
+WRF-CHEM HPC
+2-way physics baseline
+ML SURROGATE
+XGBoost fast inference
+API GATEWAY
+FastAPI / GeoJSON
+GIS DASHBOARD
+Next.js 14 / Leaflet
+Automated hourly pipeline • 11-district CPCB NAQI alerts • Live CPCB→OpenAQ fallback • SHAP explainability
+Technical Approach — Coupled WRF-Chem Architecture & Pipeline
+4. TECH STACK
+FRONTEND
+Next.js 14, React lazy-loading
+MAP / GIS
+Leaflet & react-leaflet choropleths
+UI & CHARTS
+Tailwind, Recharts, Lucide React
+API / BACKEND
+FastAPI, Python 3, Uvicorn
+GEODATA
+xarray, netCDF4 weather grids
+AI / ML
+XGBoost (R²=0.97), scikit-learn
+EXPLAIN
+SHAP & TreeExplainer engine
+SATELLITE
+Sentinel-5P NO2, TROPOMI, MODIS
+LIVE APIS
+NASA FIRMS, Open-Meteo, GEE
+FALLBACK & ARTIFACTS
+CPCB → OpenAQ live fallback • GeoJSON, NetCDF, Joblib
+          HARMONISE
+ COUPLING
+  WRF-CHEM
+    STUBBLE AI
+Temperature lapse rate (dT/dz), inversion base/capping layer height, and ventilation coefficient tracking.
+Briggs plume dynamics driven by NASA FIRMS Fire Radiative Power (FRP) and thermal buoyancy.
+HYSPLIT trajectory dispersion combined with wind vectors for real-time fire-to-pollution linkage.
+Dynamic tracer tagging & counterfactual runs (Full vs No-Fire) isolating regional stubble % share across 11 Delhi districts.
+SHAP feature attribution quantifying meteorological trapping vs incoming stubble contributions (shows why AQI rises).
+
+--- Slide Boundary ---
+
+Feasibility & Viability — Challenge → Risk → Mitigation
+Team
+Kamchalau Coders
+TECHNICAL
+OPERATIONAL
+COMPUTE
+ATTRIBUTION
+GOVERNANCE
+KEY DIFFERENTIATOR & OFFICIAL AQI STANDARD: 
+"Unlike PINN-based apps (one-way met→pollution), VayuSangam-AI couples two-way WRF-Chem with real-time fire attribution. Our system strictly follows the official CPCB National AQI standard (used by CAQM/GRAP), rather than US EPA AQI, keeping all reported values consistent with the Indian government standard."
+FEASIBILITY
+Two-way WRF-Chem + satellite & CPCB fusion; trained ML surrogate (R² = 0.97) for real-time inference.
+RISK
+Sensor dropouts, ground monitor downtime, and spatial mismatch between coarse satellite pixels and local sensors.
+MITIGATION
+Nested 1–3 km grid + XGBoost calibration; missing data shown as transparent 'No Data', never zero-filled.
+FEASIBILITY
+Continuous 72-hr rolling forecast using 100% free/open data sources (NASA, CPCB, ERA5) with zero recurring cost.
+RISK
+Government API downtime (data.gov.in / CPCB outages) during critical winter pollution episodes.
+MITIGATION
+Multi-tier CPCB → OpenAQ → WAQI fallback & strictly honest Demo fallback on API blackouts (Background Crontab driven).
+FEASIBILITY
+Physics + ML hybrid architecture: numerical physics offloaded to a pre-trained ML surrogate model.
+RISK
+WRF-Chem and HYSPLIT require high-performance computing (HPC), risking latency delays for real-time alerts.
+MITIGATION
+Trained ML surrogate delivers instant real-time inference in sub-seconds; WRF-Chem runs in background async.
+FEASIBILITY
+NASA FIRMS FRP fire data + live wind vectors enable dynamic fire-to-pollution linkage across 11 Delhi districts.
+RISK
+Wind field variance and transport uncertainties causing misattribution between local smog and agricultural fires.
+MITIGATION
+Ensemble wind trajectories + counterfactual (Full vs No-Fire) runs; SHAP feature attribution isolates fire impact.
+FEASIBILITY
+Strictly adheres to official CPCB National AQI formula across 57 NCR stations for authoritative CAQM/GRAP alerts.
+RISK
+Confusion caused by third-party apps using US EPA AQI; citizen & authority distrust of black-box model numbers.
+MITIGATION
+100% official CPCB NAQI compliant (matches government standard); SHAP explainability shows why AQI changes.
+
+--- Slide Boundary ---
+
+Impact & Benefits — Environmental, Operational, Social & Governance
+Impact chain
+EARLY CAPTURE
+FIRMS + Wind vectors
+72-HR OUTLOOK
+11-District forecast
+COUPLING
+2-Way met ↔ chem
+WHAT-IF SIM
+Quantifies fire cuts
+Official CPCB alerts
+GRAP ACTION
+HEALTH
+Provides 72-hour advance warning strictly following official CPCB National AQI standard (matching citizen alerts); protects vulnerable groups, guides school advisories, and preps hospital respiratory surge capacity.
+ECONOMIC
+Hyperlocal Delhi-NCR analysis splits Delhi into all 11 real districts rather than a single blended number, replacing blanket citywide lockdowns with precision, targeted district interventions to protect commerce.
+GOVERNANCE
+Empowers CAQM and NCR authorities with a What-If Simulator: quantifies the air quality impact of reducing stubble burning (e.g. -20% or -50% fires) before ordering disruptive emergency policy actions.
+ENVIRONMENT
+SHAP-based explainability proves why pollution is rising (weather trapping vs stubble transport); operates with zero recurring data cost on 100% free/open data, offering a scalable national blueprint.
+Team
+Kamchalau Coders
+Citizen Mobile App
+Benefits
+Authority Web Portal
+
+--- Slide Boundary ---
+
+Research, References & Product Roadmap
+1
+2
+3
+4
+5
+01
+02
+03
+01
+02
+03
+Team
+Kamchalau Coders
+Research & references
+Grell et al. (2005) / Fast et al. (2006) — WRF-Chem Two-Way Coupled System
+Atmospheric Environment / JGR: Online 2-way coupled meteorology ↔ chemistry; pollution actively alters solar radiation, temperature & PBL dynamics.
+Literature Review: VayuDrishti & AeroPath (PINN) — Stated Research Gap
+Reviewed prior PINN/sensor approaches and identified critical gap: absence of combined two-way atmospheric coupling and dynamic source attribution.
+Satellite Remote Sensing: Sentinel-5P, MODIS AOD & NASA FIRMS
+Dynamic FRP biomass fire detection, TROPOMI HCHO/NO2 tropospheric columns, and MODIS AOD for real-time fire-to-pollution linkage.
+Decoupled Ingestion Architecture & Multi-Tier Fallback
+Background Crontab isolated from UI fetches live APIs (CPCB → OpenAQ → WAQI). Prolonged government API blackouts trigger strictly honest Demo Fallbacks instead of corrupting ML models with fabricated synthetic data.
+Empirical Benchmark Validation: 57 Live CPCB CAAQMS Stations across NCR
+Rigorous validation across 57 live stations: physics + XGBoost hybrid surrogate achieves R² = 0.97, strictly adhering to CPCB National AQI.
+Product Roadmap
+A phased path from the hackathon prototype to an operational, national forecasting platform.
+MVP (Phase 1)
+Coupled WRF-Chem & fast ML surrogate (R²=0.97) • NASA FIRMS fire + wind attribution • 57 CPCB stations + OpenAQ & WAQI fallback & VayuAI Chatbot • 72-hr 11-district Delhi forecast engine.
+SCALE-UP (Phase 2)
+Interactive What-If stubble reduction policy simulator • SHAP explainability engine showing why AQI rises • Automated CPCB NAQI alerts • VayuAI (Llama-3.1) intelligent Chatbot for natural language querying & verified test suites.
+OPERATIONAL ROLLOUT (Phase 3)
+MoES / NCMRWF / CAQM operational integration • Automated GRAP stage early-warning triggers • Citizen mobile app & agency REST API • 100% free open data zero-recurring-cost national rollout.
+
+--- Slide Boundary ---
+
+System Architecture: Resilient API Fetching & Crontab
+1. Decoupled Architecture (Zero-Crash Policy)
+• Independent Background Crontab: Fetches data from APIs every 15 minutes, completely isolated from the Next.js Frontend and FastAPI backend.
+• No UI Blocking: Frontend never waits for slow government APIs; it instantly reads pre-processed data from the local SQLite Database.
+2. Multi-Tier Fallback Mechanism
+• Primary (CPCB) → Fallback 1 (OpenAQ) → Fallback 2 (WAQI / AQICN).
+• Graceful Degradation: If one API is down or keys expire, it silently cascades to the next.
+3. Honest AI Philosophy (Real Data > Fake Data)
+• If all government APIs experience prolonged outages (>2 hours), the system honestly breaks the 24h streak and reverts to a Demo Fallback instead of corrupting the XGBoost model with fabricated synthetic data.
+
+--- Slide Boundary ---
